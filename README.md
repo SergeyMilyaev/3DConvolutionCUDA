@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project demonstrates the use of NVIDIA Performance Primitives (NPP) library with CUDA to perform image rotation. The goal is to utilize GPU acceleration to efficiently rotate a given image by a specified angle, leveraging the computational power of modern GPUs. The project is a part of the CUDA at Scale for the Enterprise course and serves as a template for understanding how to implement basic image processing operations using CUDA and NPP.
+This project implements several CUDA kernels to perform 3D convolution
 
 ## Code Organization
 
@@ -21,8 +21,6 @@ The source code should be placed here in a hierarchical fashion, as appropriate.
 ```README.md```
 This file should hold the description of the project so that anyone cloning or deciding if they want to clone this repository can understand its purpose to help with their decision.
 
-```INSTALL```
-This file should hold the human-readable set of instructions for installing the code so that it can be executed. If possible it should be organized around different operating systems, so that it can be done by as many people as possible with different constraints.
 
 ```Makefile or CMAkeLists.txt or build.sh```
 There should be some rudimentary scripts for building your project's code in an automatic fashion.
@@ -57,16 +55,6 @@ Download and install the [CUDA Toolkit 11.4](https://developer.nvidia.com/cuda-d
 Make sure the dependencies mentioned in [Dependencies]() section above are installed.
 
 ## Build and Run
-
-### Windows
-The Windows samples are built using the Visual Studio IDE. Solution files (.sln) are provided for each supported version of Visual Studio, using the format:
-```
-*_vs<version>.sln - for Visual Studio <version>
-```
-Each individual sample has its own set of solution files in its directory:
-
-To build/examine all the samples at once, the complete solution files should be used. To build/examine a single sample, the individual sample solution files should be used.
-> **Note:** Some samples require that the Microsoft DirectX SDK (June 2010 or newer) be installed and that the VC++ directory paths are properly set up (**Tools > Options...**). Check DirectX Dependencies section for details."
 
 ### Linux
 The Linux samples are built using makefiles. To use the makefiles, change the current directory to the sample directory you wish to build, and run make:
