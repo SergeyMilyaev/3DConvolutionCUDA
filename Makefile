@@ -34,10 +34,15 @@
 # Define the compiler and flags
 NVCC = /usr/local/cuda/bin/nvcc
 CXX = g++
+
+GTEST_DIR := ../googletest
+
 INCLUDES := -I/usr/local/cuda/include
-# INCLUDES += -I../cuda-samples/Common/UtilNPP
-CXXFLAGS = -std=c++11 $(INCLUDES)
+TEST_INCLUDES = -I$(GTEST_DIR)/googletest/include $(INCLUDES)
+CXXFLAGS = -std=c++11 # $(INCLUDES)
+TEST_CXXFLAGS = -std=c++17
 LDFLAGS = -L/usr/local/cuda/lib64 -lcudart -lnppc -lnppial -lnppicc -lnppidei -lnppif -lnppig -lnppim -lnppist -lnppisu -lnppitc
+TEST_LDFLAGS = -L$(GTEST_DIR)/build/lib -lgtest -lgtest_main $(LDFLAGS)
 
 # Define directories
 SRC_DIR = src
@@ -48,6 +53,8 @@ LIB_DIR = lib
 # Define source files and target executable
 SRC = $(SRC_DIR)/convolution3D_gold.cpp $(SRC_DIR)/main.cpp
 TARGET = $(BIN_DIR)/convolution3D
+TEST_SRC = tests/test_convolution3D.cpp $(SRC_DIR)/convolution3D_gold.cpp
+TEST_TARGET = $(BIN_DIR)/test_convolution3D
 
 # Define the default rule
 all: $(TARGET)
@@ -55,7 +62,14 @@ all: $(TARGET)
 # Rule for building the target executable
 $(TARGET): $(SRC)
 	mkdir -p $(BIN_DIR)
-	$(NVCC) $(CXXFLAGS) $(SRC) -o $(TARGET) $(LDFLAGS)
+	$(NVCC) $(CXXFLAGS) $(INCLUDES) $(SRC) -o $(TARGET) $(LDFLAGS)
+
+.PHONY: test
+test: $(TEST_TARGET)
+
+$(TEST_TARGET): $(TEST_SRC)
+	mkdir -p $(BIN_DIR)
+	$(CXX) $(TEST_CXXFLAGS) $(TEST_INCLUDES) $^ -o $@ $(TEST_LDFLAGS)
 
 # Rule for running the application
 run: $(TARGET)

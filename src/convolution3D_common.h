@@ -8,6 +8,6 @@
 // Reference CPU convolution
 ////////////////////////////////////////////////////////////////////////////////
 void convolution3D_gold(float* p_output, const float* p_input, const float* p_kernel,
-    const int width, const int height, const int depth, const int kernel_radius);
+    const int width, const int height, const int depth, const int kernel_radius, const bool use_zero_padding);
 
 #endif
