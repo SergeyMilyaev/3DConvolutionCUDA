@@ -48,4 +48,25 @@ extern "C" void launch_convolution3D_naive(
     const int kernel_radius_z,
     const bool use_zero_padding);
 
+////////////////////////////////////////////////////////////////////////////////
+// Naive convolution with global kernel (no shared/constant memory)
+////////////////////////////////////////////////////////////////////////////////
+__global__ void convolution3D_naive_global(float* __restrict__ p_output, const float* __restrict__ p_input,
+    const float* __restrict__ p_kernel, const int width, const int height, const int depth, 
+    const int kernel_radius_x, const int kernel_radius_y, const int kernel_radius_z, const bool use_zero_padding);
+
+extern "C" void launch_convolution3D_naive_global(
+    const dim3 gridDim,
+    const dim3 blockDim,
+    float* p_output,
+    const float* p_input,
+    const float* p_kernel,
+    const int width,
+    const int height,
+    const int depth,
+    const int kernel_radius_x,
+    const int kernel_radius_y,
+    const int kernel_radius_z,
+    const bool use_zero_padding);
+
 #endif

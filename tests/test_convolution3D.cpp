@@ -200,10 +200,71 @@ TEST_F(Convolution3DCUDATest, BoxFilterAllOnesVolumeNoPadding) {
 	runCUDATest(false);
 }
 
-TEST_F(Convolution3DCUDATest, LaplaceFilterImpulseVolumeNoPadding) {
+class Convolution3DCUDAGlobalTest : public Convolution3DTest {
+protected:
+	float *d_input = nullptr, *d_output = nullptr, *d_kernel = nullptr;
+
+	void SetUp() override {
+		Convolution3DTest::SetUp();
+		cudaMalloc(&d_input, volume_elements * sizeof(float));
+		cudaMalloc(&d_output, volume_elements * sizeof(float));
+		cudaMalloc(&d_kernel, kernel_elements * sizeof(float));
+	}
+
+	void TearDown() override {
+		cudaFree(d_input);
+		cudaFree(d_output);
+		cudaFree(d_kernel);
+	}
+
+	void runCUDAGlobalTest(bool use_zero_padding) {
+		std::vector<float> expected(volume_elements);
+		convolution3D_gold(expected.data(), input.data(), kernel.data(),
+						   width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
+
+		cudaMemcpy(d_input, input.data(), volume_elements * sizeof(float), cudaMemcpyHostToDevice);
+		cudaMemcpy(d_kernel, kernel.data(), kernel_elements * sizeof(float), cudaMemcpyHostToDevice);
+
+		dim3 blockDim(2, 2, 2);
+		dim3 gridDim((width + blockDim.x - 1) / blockDim.x,
+					 (height + blockDim.y - 1) / blockDim.y,
+					 (depth + blockDim.z - 1) / blockDim.z);
+		launch_convolution3D_naive_global(gridDim, blockDim, d_output, d_input, d_kernel, width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
+
+		cudaError_t err = cudaDeviceSynchronize();
+		ASSERT_EQ(err, cudaSuccess);
+
+		cudaMemcpy(output.data(), d_output, volume_elements * sizeof(float), cudaMemcpyDeviceToHost);
+
+		for (int idx = 0; idx < volume_elements; ++idx) {
+			EXPECT_FLOAT_EQ(expected[idx], output[idx])
+				<< "Mismatch at index " << idx;
+		}
+	}
+};
+
+TEST_F(Convolution3DCUDAGlobalTest, BoxFilterAllOnesVolumeZeroPadding) {
+	setupOnesVolume();
+	setupBoxFilterKernel();
+	runCUDAGlobalTest(true);
+}
+
+TEST_F(Convolution3DCUDAGlobalTest, LaplaceFilterImpulseVolumeZeroPadding) {
 	setupImpulseVolume();
 	setupLaplaceKernel();
-	runCUDATest(false);
+	runCUDAGlobalTest(true);
+}
+
+TEST_F(Convolution3DCUDAGlobalTest, BoxFilterAllOnesVolumeNoPadding) {
+	setupOnesVolume();
+	setupBoxFilterKernel();
+	runCUDAGlobalTest(false);
+}
+
+TEST_F(Convolution3DCUDAGlobalTest, LaplaceFilterImpulseVolumeNoPadding) {
+	setupImpulseVolume();
+	setupLaplaceKernel();
+	runCUDAGlobalTest(false);
 }
 
 }  // namespace

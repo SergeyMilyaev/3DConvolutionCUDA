@@ -171,3 +171,73 @@ extern "C" void launch_convolution3D_naive(
         p_output, p_input, width, height, depth,
         kernel_radius_x, kernel_radius_y, kernel_radius_z, use_zero_padding);
 }
+
+__global__ void convolution3D_naive_global(
+    float* __restrict__ p_output,
+    const float* __restrict__ p_input,
+    const float* __restrict__ p_kernel,
+    const int width,
+    const int height,
+    const int depth,
+    const int kernel_radius_x,
+    const int kernel_radius_y,
+    const int kernel_radius_z,
+    const bool use_zero_padding)
+{
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    const int z = blockIdx.z * blockDim.z + threadIdx.z;
+
+    if (x >= width || y >= height || z >= depth) {
+        return;
+    }
+
+    const int kernel_dim_x = 2 * kernel_radius_x + 1;
+    const int kernel_dim_y = 2 * kernel_radius_y + 1;
+    const int kernel_dim_z = 2 * kernel_radius_z + 1;
+
+    float sum = 0.0f;
+
+    for (int kz = 0; kz < kernel_dim_z; ++kz) {
+        const int input_z = z + kz - kernel_radius_z;        
+        for (int ky = 0; ky < kernel_dim_y; ++ky) {
+            const int input_y = y + ky - kernel_radius_y;            
+            for (int kx = 0; kx < kernel_dim_x; ++kx) {
+                const int input_x = x + kx - kernel_radius_x;
+                const int clamped_x = clamp(input_x, 0, width);
+                const int clamped_y = clamp(input_y, 0, height);
+                const int clamped_z = clamp(input_z, 0, depth);
+                const bool is_in_bounds = (input_x == clamped_x) && (input_y == clamped_y) && (input_z == clamped_z);
+                const int input_idx = flatten3D(clamped_x, clamped_y, clamped_z, width, height);
+                const float input_val = p_input[input_idx] * static_cast<float>(!use_zero_padding || is_in_bounds);
+
+                const int kernel_idx = flatten3D(kx, ky, kz, kernel_dim_x, kernel_dim_y);
+                const float kernel_val = p_kernel[kernel_idx];
+                sum += input_val * kernel_val;
+            }
+        }
+    }
+
+    const int output_idx = flatten3D(x, y, z, width, height);
+    p_output[output_idx] = sum;
+}
+
+// Wrapper function to be called from C++ code
+extern "C" void launch_convolution3D_naive_global(
+    const dim3 gridDim,
+    const dim3 blockDim,
+    float* p_output,
+    const float* p_input,
+    const float* p_kernel,
+    const int width,
+    const int height,
+    const int depth,
+    const int kernel_radius_x,
+    const int kernel_radius_y,
+    const int kernel_radius_z,
+    const bool use_zero_padding)
+{
+    convolution3D_naive_global<<<gridDim, blockDim>>>(
+        p_output, p_input, p_kernel, width, height, depth,
+        kernel_radius_x, kernel_radius_y, kernel_radius_z, use_zero_padding);
+}
