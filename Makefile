@@ -53,7 +53,7 @@ LIB_DIR = lib
 # Define source files and target executable
 SRC = $(SRC_DIR)/convolution3D_gold.cpp $(SRC_DIR)/main.cpp
 TARGET = $(BIN_DIR)/convolution3D
-TEST_SRC = tests/test_convolution3D.cpp $(SRC_DIR)/convolution3D_gold.cpp
+TEST_SRC = tests/test_convolution3D.cpp $(SRC_DIR)/convolution3D_gold.cpp $(SRC_DIR)/convolution3d.cu
 TEST_TARGET = $(BIN_DIR)/test_convolution3D
 
 # Define the default rule
@@ -69,7 +69,7 @@ test: $(TEST_TARGET)
 
 $(TEST_TARGET): $(TEST_SRC)
 	mkdir -p $(BIN_DIR)
-	$(CXX) $(TEST_CXXFLAGS) $(TEST_INCLUDES) $^ -o $@ $(TEST_LDFLAGS)
+	$(NVCC) $(TEST_CXXFLAGS) $(TEST_INCLUDES) $^ -o $@ $(TEST_LDFLAGS)
 
 # Rule for running the application
 run: $(TARGET)
