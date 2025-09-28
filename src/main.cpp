@@ -72,7 +72,7 @@ int main() {
     for (int i = 0; i < warmup_iterations; ++i) {
         std::cout << "Warmup iteration " << (i+1) << "/" << warmup_iterations << std::endl;
         CUDA_CHECK(cudaEventRecord(start));
-        convolution3D_gold(h_output_cpu.data(), h_input.data(), h_kernel.data(), width, height, depth, kernel_radius, false);
+        convolution3D_gold(h_output_cpu.data(), h_input.data(), h_kernel.data(), width, height, depth, kernel_radius, kernel_radius, kernel_radius, false);
         CUDA_CHECK(cudaEventRecord(stop));
         CUDA_CHECK(cudaEventSynchronize(stop));
         

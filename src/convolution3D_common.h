@@ -14,7 +14,7 @@ constexpr size_t MAX_SHARED_MEMORY_ELEMENTS = MAX_SHARED_MEMORY_BYTES / sizeof(f
 // Reference CPU convolution
 ////////////////////////////////////////////////////////////////////////////////
 void convolution3D_gold(float* p_output, const float* p_input, const float* p_kernel,
-    const int width, const int height, const int depth, const int kernel_radius, const bool use_zero_padding);
+    const int width, const int height, const int depth, const int kernel_radius_x, const int kernel_radius_y, const int kernel_radius_z, const bool use_zero_padding);
 
 
 cudaError_t uploadConvolutionKernelToConstantMemory(const float* h_kernel,
@@ -45,6 +45,7 @@ extern "C" void launch_convolution3D_naive(
     const int depth,
     const int kernel_radius_x,
     const int kernel_radius_y,
-    const int kernel_radius_z);
+    const int kernel_radius_z,
+    const bool use_zero_padding);
 
 #endif

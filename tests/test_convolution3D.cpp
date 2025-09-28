@@ -71,7 +71,7 @@ TEST_F(Convolution3DGoldTest, BoxFilterAllOnesVolume) {
 	std::vector<float> expected(volume_elements, static_cast<float>(kernel_elements));
 
 	convolution3D_gold(output.data(), input.data(), kernel.data(),
-					   width, height, depth, kernel_radius, false);
+					   width, height, depth, kernel_radius, kernel_radius, kernel_radius, false);
 
 	for (int idx = 0; idx < volume_elements; ++idx) {
 		EXPECT_FLOAT_EQ(expected[idx], output[idx])
@@ -100,7 +100,7 @@ TEST_F(Convolution3DGoldTest, LaplaceFilterImpulseVolume) {
 	}
 
 	convolution3D_gold(output.data(), input.data(), kernel.data(),
-					   width, height, depth, kernel_radius, false);
+					   width, height, depth, kernel_radius, kernel_radius, kernel_radius, false);
 
 	for (int idx = 0; idx < volume_elements; ++idx) {
 		EXPECT_FLOAT_EQ(expected[idx], output[idx])
@@ -130,7 +130,7 @@ TEST_F(Convolution3DGoldTest, BoxFilterAllOnesVolumeZeroPadding) {
 	}
 
 	convolution3D_gold(output.data(), input.data(), kernel.data(),
-					   width, height, depth, kernel_radius, true);
+					   width, height, depth, kernel_radius, kernel_radius, kernel_radius, true);
 
 	for (int idx = 0; idx < volume_elements; ++idx) {
 		EXPECT_FLOAT_EQ(expected[idx], output[idx])
@@ -153,10 +153,10 @@ protected:
 		cudaFree(d_output);
 	}
 
-	void runCUDATest() {
+	void runCUDATest(bool use_zero_padding) {
 		std::vector<float> expected(volume_elements);
 		convolution3D_gold(expected.data(), input.data(), kernel.data(),
-						   width, height, depth, kernel_radius, true);
+						   width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
 
 		cudaMemcpy(d_input, input.data(), volume_elements * sizeof(float), cudaMemcpyHostToDevice);
 
@@ -168,7 +168,7 @@ protected:
 					 (height + blockDim.y - 1) / blockDim.y,
 					 (depth + blockDim.z - 1) / blockDim.z);
 		size_t shared_size = convolution3DSharedTileSizeBytes(blockDim, kernel_radius, kernel_radius, kernel_radius);
-		launch_convolution3D_naive(gridDim, blockDim, shared_size, d_output, d_input, width, height, depth, kernel_radius, kernel_radius, kernel_radius);
+		launch_convolution3D_naive(gridDim, blockDim, shared_size, d_output, d_input, width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
 
 		err = cudaDeviceSynchronize();
 		ASSERT_EQ(err, cudaSuccess);
@@ -185,13 +185,25 @@ protected:
 TEST_F(Convolution3DCUDATest, BoxFilterAllOnesVolumeZeroPadding) {
 	setupOnesVolume();
 	setupBoxFilterKernel();
-	runCUDATest();
+	runCUDATest(true);
 }
 
 TEST_F(Convolution3DCUDATest, LaplaceFilterImpulseVolumeZeroPadding) {
 	setupImpulseVolume();
 	setupLaplaceKernel();
-	runCUDATest();
+	runCUDATest(true);
+}
+
+TEST_F(Convolution3DCUDATest, BoxFilterAllOnesVolumeNoPadding) {
+	setupOnesVolume();
+	setupBoxFilterKernel();
+	runCUDATest(false);
+}
+
+TEST_F(Convolution3DCUDATest, LaplaceFilterImpulseVolumeNoPadding) {
+	setupImpulseVolume();
+	setupLaplaceKernel();
+	runCUDATest(false);
 }
 
 }  // namespace

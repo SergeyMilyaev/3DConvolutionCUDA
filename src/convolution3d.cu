@@ -12,6 +12,10 @@ __device__ __forceinline__ int flatten3D(const int x, const int y, const int z,
     return z * dim_y * dim_x + y * dim_x + x;
 }
 
+__device__ __forceinline__ int clamp(int x, int a, int b) {
+    return max(a, min(x, b - 1));
+}
+
 }  // namespace
 
 cudaError_t uploadConvolutionKernelToConstantMemory(const float* h_kernel,
@@ -67,7 +71,8 @@ __global__ void convolution3D_naive(
     const int depth,
     const int kernel_radius_x,
     const int kernel_radius_y,
-    const int kernel_radius_z)
+    const int kernel_radius_z,
+    const bool use_zero_padding)
 {
     extern __shared__ float s_tile_1d[];
 
@@ -108,16 +113,12 @@ __global__ void convolution3D_naive(
             for (int sx = tx; sx < shared_dim_x; sx += tile_dim_x) {
                 const int global_x = block_base_x + sx - kernel_radius_x;
                 const int shared_idx = sz * shared_stride_z + sy * shared_stride_y + sx;
-
-                if (global_x >= 0 && global_x < width &&
-                    global_y >= 0 && global_y < height &&
-                    global_z >= 0 && global_z < depth)
-                {
-                    const int global_idx = flatten3D(global_x, global_y, global_z, width, height);
-                    s_tile_1d[shared_idx] = p_input[global_idx];
-                } else {
-                    s_tile_1d[shared_idx] = 0.0f;
-                }
+                const int src_x = clamp(global_x, 0, width);
+                const int src_y = clamp(global_y, 0, height);
+                const int src_z = clamp(global_z, 0, depth);
+                const int global_idx = flatten3D(src_x, src_y, src_z, width, height);
+                const bool is_in_bounds = (global_x == src_x) && (global_y == src_y) && (global_z == src_z);
+                s_tile_1d[shared_idx] = p_input[global_idx] * static_cast<float>(!use_zero_padding || is_in_bounds);
             }
         }
     }
@@ -163,9 +164,10 @@ extern "C" void launch_convolution3D_naive(
     const int depth,
     const int kernel_radius_x,
     const int kernel_radius_y,
-    const int kernel_radius_z)
+    const int kernel_radius_z,
+    const bool use_zero_padding)
 {
     convolution3D_naive<<<gridDim, blockDim, shared_size>>>(
         p_output, p_input, width, height, depth,
-        kernel_radius_x, kernel_radius_y, kernel_radius_z);
+        kernel_radius_x, kernel_radius_y, kernel_radius_z, use_zero_padding);
 }
