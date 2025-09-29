@@ -255,6 +255,106 @@ TEST_F(Convolution3DCUDAGlobalTest, LaplaceFilterImpulseVolumeZeroPadding) {
 	runCUDAGlobalTest(true);
 }
 
+class Convolution3DSeparableCUDATest : public Convolution3DTest {
+protected:
+	float *d_input = nullptr, *d_output = nullptr;
+	std::vector<float> kernel_x;
+	std::vector<float> kernel_y;
+	std::vector<float> kernel_z;
+
+	void SetUp() override {
+		Convolution3DTest::SetUp();
+		kernel_x.resize(kernel_size);
+		kernel_y.resize(kernel_size);
+		kernel_z.resize(kernel_size);
+		ASSERT_EQ(cudaSuccess, cudaMalloc(&d_input, volume_elements * sizeof(float)));
+		ASSERT_EQ(cudaSuccess, cudaMalloc(&d_output, volume_elements * sizeof(float)));
+	}
+
+	void TearDown() override {
+		cudaFree(d_input);
+		cudaFree(d_output);
+	}
+
+	void setupSeparableKernel() {
+		ASSERT_EQ(kernel_size, 3);
+		// Symmetric kernels for each axis
+		const float axis_x[] = {0.25f, 0.5f, 0.25f};
+		const float axis_y[] = {0.5f, 1.0f, 0.5f};
+		const float axis_z[] = {1.0f, 2.0f, 1.0f};
+		for (int i = 0; i < kernel_size; ++i) {
+			kernel_x[i] = axis_x[i];
+			kernel_y[i] = axis_y[i];
+			kernel_z[i] = axis_z[i];
+		}
+
+		for (int z = 0; z < kernel_size; ++z) {
+			for (int y = 0; y < kernel_size; ++y) {
+				for (int x = 0; x < kernel_size; ++x) {
+					const int idx = z * (kernel_size * kernel_size) + y * kernel_size + x;
+					kernel[idx] = kernel_x[x] * kernel_y[y] * kernel_z[z];
+				}
+			}
+		}
+	}
+
+	void setupRampVolume() {
+		for (int idx = 0; idx < volume_elements; ++idx) {
+			input[idx] = static_cast<float>((idx % 7) - 3);
+		}
+	}
+
+	void runSeparableTest(bool use_zero_padding, dim3 block_dim = dim3(0, 0, 0)) {
+		std::vector<float> expected(volume_elements);
+		convolution3D_gold(expected.data(), input.data(), kernel.data(),
+				width, height, depth,
+				kernel_radius, kernel_radius, kernel_radius,
+				use_zero_padding);
+
+		cudaError_t copy_err = cudaMemcpy(d_input, input.data(), volume_elements * sizeof(float), cudaMemcpyHostToDevice);
+		ASSERT_EQ(cudaSuccess, copy_err);
+
+		cudaError_t err = convolution3DSeparable(d_output, d_input,
+			kernel_x.data(), kernel_y.data(), kernel_z.data(),
+			width, height, depth,
+			kernel_radius, kernel_radius, kernel_radius,
+			use_zero_padding,
+			nullptr,
+			block_dim);
+		ASSERT_EQ(err, cudaSuccess);
+
+		err = cudaDeviceSynchronize();
+		ASSERT_EQ(err, cudaSuccess);
+
+		copy_err = cudaMemcpy(output.data(), d_output, volume_elements * sizeof(float), cudaMemcpyDeviceToHost);
+		ASSERT_EQ(cudaSuccess, copy_err);
+
+		for (int idx = 0; idx < volume_elements; ++idx) {
+			EXPECT_NEAR(expected[idx], output[idx], 1e-4f)
+				<< "Mismatch at index " << idx;
+		}
+	}
+};
+
+TEST_F(Convolution3DSeparableCUDATest, RampVolumeClampPadding) {
+	setupRampVolume();
+	setupSeparableKernel();
+	runSeparableTest(false);
+}
+
+TEST_F(Convolution3DSeparableCUDATest, RampVolumeZeroPadding) {
+	setupRampVolume();
+	setupSeparableKernel();
+	runSeparableTest(true);
+}
+
+TEST_F(Convolution3DSeparableCUDATest, CustomBlockConfiguration) {
+	setupRampVolume();
+	setupSeparableKernel();
+	const dim3 custom_block(3, 2, 1);
+	runSeparableTest(false, custom_block);
+}
+
 TEST_F(Convolution3DCUDAGlobalTest, BoxFilterAllOnesVolumeNoPadding) {
 	setupOnesVolume();
 	setupBoxFilterKernel();

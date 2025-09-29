@@ -69,4 +69,20 @@ extern "C" void launch_convolution3D_naive_global(
     const int kernel_radius_z,
     const bool use_zero_padding);
 
+cudaError_t convolution3DSeparable(
+    float* d_output,
+    const float* d_input,
+    const float* h_kernel_x,
+    const float* h_kernel_y,
+    const float* h_kernel_z,
+    int width,
+    int height,
+    int depth,
+    int kernel_radius_x,
+    int kernel_radius_y,
+    int kernel_radius_z,
+    bool use_zero_padding,
+    cudaStream_t stream = nullptr,
+    dim3 block_dim = dim3(0, 0, 0));
+
 #endif
