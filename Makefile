@@ -51,7 +51,7 @@ DATA_DIR = data
 LIB_DIR = lib
 
 # Define source files and target executable
-SRC = $(SRC_DIR)/convolution3D_gold.cpp $(SRC_DIR)/main.cpp
+SRC = $(SRC_DIR)/convolution3D_gold.cpp $(SRC_DIR)/convolution3d.cu $(SRC_DIR)/main.cpp
 TARGET = $(BIN_DIR)/convolution3D
 TEST_SRC = tests/test_convolution3D.cpp $(SRC_DIR)/convolution3D_gold.cpp $(SRC_DIR)/convolution3d.cu
 TEST_TARGET = $(BIN_DIR)/test_convolution3D
