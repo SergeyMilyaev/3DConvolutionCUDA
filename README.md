@@ -18,8 +18,6 @@ Benchmark statistics (average, median, minimum) are reported after multiple warm
 | `src/` | CUDA and C++ sources for the benchmark executable and helper routines. |
 | `tests/` | GoogleTest-based unit tests that validate the CPU and CUDA kernels. |
 | `bin/` | Build output directory containing compiled binaries such as `convolution3D`. |
-| `data/` | Sample assets (e.g., `Lena.png`) that can be used for experimentation. |
-| `lib/` | Placeholder for third-party libraries that are not provided by the system toolchain. |
 
 ## Building
 
