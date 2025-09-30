@@ -160,10 +160,10 @@ The performance tests were conducted in Windows Subsystem for Linux with Intel C
 
 | Implementation | Key Feature | Median time (ms) | Primary Limiter |
 |---|---|---|---|
-| 1. `convolution3DGold` | Baseline single-thread CPU processing | 5616.53 | Slow sequential processing |
-| 2. `convolution3DBaseline` | Direct Global Memory Access | 2.67674 | Redundant Global Memory Access |
-| 3. `convolution3DOptimized` | Shared/Constant Memory Tiling | 1.04858 | Global Memory Latency (Tile Loading) |
-| 4. `convolution3DSeparable` | Three 1D Passes | 0.56832 | Strided Global Memory Access (Y/Z passes) |
+| `convolution3DGold` | Baseline single-thread CPU processing | 5616.53 | Slow sequential processing |
+| `convolution3DBaseline` | Direct Global Memory Access | 2.67674 | Redundant Global Memory Access |
+| `convolution3DOptimized` | Shared/Constant Memory Tiling | 1.04858 | Global Memory Latency (Tile Loading) |
+| `convolution3DSeparable` | Three 1D Passes | 0.56832 | Strided Global Memory Access (Y/Z passes) |
 
 
 ## Code organization
