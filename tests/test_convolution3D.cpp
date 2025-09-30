@@ -168,7 +168,7 @@ protected:
 					 (height + blockDim.y - 1) / blockDim.y,
 					 (depth + blockDim.z - 1) / blockDim.z);
 		size_t shared_size = convolution3DSharedTileSizeBytes(blockDim, kernel_radius, kernel_radius, kernel_radius);
-		launch_convolution3D_naive(gridDim, blockDim, shared_size, d_output, d_input, width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
+		launch_convolution3DOptimized(gridDim, blockDim, shared_size, d_output, d_input, width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
 
 		err = cudaDeviceSynchronize();
 		ASSERT_EQ(err, cudaSuccess);
@@ -229,7 +229,7 @@ protected:
 		dim3 gridDim((width + blockDim.x - 1) / blockDim.x,
 					 (height + blockDim.y - 1) / blockDim.y,
 					 (depth + blockDim.z - 1) / blockDim.z);
-		launch_convolution3D_naive_global(gridDim, blockDim, d_output, d_input, d_kernel, width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
+		launch_convolution3DBaseline(gridDim, blockDim, d_output, d_input, d_kernel, width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
 
 		cudaError_t err = cudaDeviceSynchronize();
 		ASSERT_EQ(err, cudaSuccess);

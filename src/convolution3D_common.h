@@ -30,11 +30,11 @@ size_t convolution3DSharedTileSizeBytes(dim3 block_dim,
 ////////////////////////////////////////////////////////////////////////////////
 // Naive convolution
 ////////////////////////////////////////////////////////////////////////////////
-__global__ void convolution3D_naive(float* __restrict__ p_output, const float* __restrict__ p_input,
+__global__ void convolution3DOptimized(float* __restrict__ p_output, const float* __restrict__ p_input,
     const int width, const int height, const int depth, 
     const int kernel_radius_x, const int kernel_radius_y, const int kernel_radius_z);
 
-extern "C" void launch_convolution3D_naive(
+extern "C" void launch_convolution3DOptimized(
     const dim3 gridDim,
     const dim3 blockDim,
     const size_t shared_size,
@@ -51,11 +51,11 @@ extern "C" void launch_convolution3D_naive(
 ////////////////////////////////////////////////////////////////////////////////
 // Naive convolution with global kernel (no shared/constant memory)
 ////////////////////////////////////////////////////////////////////////////////
-__global__ void convolution3D_naive_global(float* __restrict__ p_output, const float* __restrict__ p_input,
+__global__ void convolution3DBaseline(float* __restrict__ p_output, const float* __restrict__ p_input,
     const float* __restrict__ p_kernel, const int width, const int height, const int depth, 
     const int kernel_radius_x, const int kernel_radius_y, const int kernel_radius_z, const bool use_zero_padding);
 
-extern "C" void launch_convolution3D_naive_global(
+extern "C" void launch_convolution3DBaseline(
     const dim3 gridDim,
     const dim3 blockDim,
     float* p_output,
@@ -69,6 +69,9 @@ extern "C" void launch_convolution3D_naive_global(
     const int kernel_radius_z,
     const bool use_zero_padding);
 
+////////////////////////////////////////////////////////////////////////////////
+// Separable convolution with shared/constant memory
+////////////////////////////////////////////////////////////////////////////////
 cudaError_t convolution3DSeparable(
     float* d_output,
     const float* d_input,

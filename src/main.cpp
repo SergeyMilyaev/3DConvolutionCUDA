@@ -316,7 +316,7 @@ int main(int argc, char** argv) {
     };
 
     const std::function<void(void)> launch_naive = [&]() {
-        launch_convolution3D_naive(grid_dim, block_dim, shared_size,
+        launch_convolution3DOptimized(grid_dim, block_dim, shared_size,
                                    d_output, d_input,
                                    width, height, depth,
                                    kernel_radius, kernel_radius, kernel_radius,
@@ -324,7 +324,7 @@ int main(int argc, char** argv) {
     };
 
     const std::function<void(void)> launch_naive_global = [&]() {
-        launch_convolution3D_naive_global(grid_dim, block_dim,
+        launch_convolution3DBaseline(grid_dim, block_dim,
                                           d_output, d_input, d_kernel,
                                           width, height, depth,
                                           kernel_radius, kernel_radius, kernel_radius,
@@ -342,13 +342,13 @@ int main(int argc, char** argv) {
     };
 
     std::vector<float> timings_naive;
-    benchmark_cuda_kernel("CUDA convolution3D_naive",
+    benchmark_cuda_kernel("CUDA convolution3DOptimized",
                           launch_naive,
                           timings_naive,
                           h_output_naive);
 
     std::vector<float> timings_naive_global;
-    benchmark_cuda_kernel("CUDA convolution3D_naive_global",
+    benchmark_cuda_kernel("CUDA convolution3DBaseline",
                           launch_naive_global,
                           timings_naive_global,
                           h_output_naive_global);
