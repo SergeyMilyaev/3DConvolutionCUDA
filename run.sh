@@ -1,2 +1,3 @@
 #!/bin/bash
- ./bin/convolution3D 
+
+./bin/convolution3D 
