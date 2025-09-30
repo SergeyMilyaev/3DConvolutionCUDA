@@ -90,5 +90,4 @@ help:
 	@echo "  make        - Build the project."
 	@echo "  make run    - Run the project."
 	@echo "  make clean  - Clean up the build files."
-	@echo "  make install- Install the project (if applicable)."
 	@echo "  make help   - Display this help message."

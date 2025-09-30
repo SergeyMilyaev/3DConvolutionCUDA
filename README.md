@@ -9,15 +9,8 @@ This project compares several 3D convolution implementations:
 * A naive CUDA kernel that reads the kernel from global memory
 * A separable CUDA implementation
 
-Benchmark statistics (average, median, minimum) are reported after multiple warm-up and measured iterations.
+Benchmark statistics (average, median, minimum) in convolution3D are reported after multiple warm-up and measured iterations.
 
-## Code organization
-
-| Path | Description |
-| --- | --- |
-| `src/` | CUDA and C++ sources for the benchmark executable and helper routines. |
-| `tests/` | GoogleTest-based unit tests that validate the CPU and CUDA kernels. |
-| `bin/` | Build output directory containing compiled binaries such as `convolution3D`. |
 
 ## Building
 
@@ -41,6 +34,12 @@ The main benchmark binary is `bin/convolution3D`. Run it directly to use the def
 
 ```bash
 ./bin/convolution3D
+```
+
+or 
+
+```bash
+make run
 ```
 
 Command-line options let you tailor the benchmark to your dataset or GPU. Run `--help` to view the supported parameters:
@@ -107,6 +106,9 @@ make
 
 A 3D convolution applies a 3D filter, or kernel, across a 3D input volume to produce a 3D output feature map. Each output voxel is the sum of the element-wise product of the filter and the corresponding input sub-volume. This operation is computationally intensive and, depending on the implementation, can be heavily memory-bound.
 
+![3D Convolution Visualization](3DConvolution.gif)
+![3D Convolution Visualization](3DConvolution.png)
+
 ### Implementation 1: `convolution3DBaseline`
 
 The most straightforward implementation maps one thread to each output voxel. The kernel reads all required input points and filter weights directly from global memory, performs the computation, and writes the single result back to global memory. The input and kernel sized are only bounded by the the amount of the DRAM on the GPU.
@@ -151,3 +153,13 @@ For filters that are "separable," a 3D convolution can be decomposed into three 
 *   **Performance Analysis:**
     *   **Bottleneck:** The performance is entirely dictated by memory bandwidth and the efficiency of the shared memory implementation for the strided Y and Z passes.
     *   **Trade-off:** While computationally far superior, a separable convolution can be slower than an optimized naive convolution if the kernel size is small (e.g., 3x3x3), because the overhead of three kernel launches and intermediate memory traffic outweighs the arithmetic savings. For larger separable kernels, this approach is significantly faster.
+
+
+
+## Code organization
+
+| Path | Description |
+| --- | --- |
+| `src/` | CUDA and C++ sources for the benchmark executable and helper routines. |
+| `tests/` | GoogleTest-based unit tests that validate the CPU and CUDA kernels. |
+| `bin/` | Build output directory containing compiled binaries such as `convolution3D`. |

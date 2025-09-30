@@ -486,16 +486,16 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             // Draw padded input volume
-            drawText('Padded Input (7×7×7)', 140, 30);
-            draw3DVolume(40, 60, paddedSize, paddedSize, paddedSize, '#4dabf7', '#e74c3c', {
+            drawText('Padded Input (7×7×7)', 140, 70);
+            draw3DVolume(40, 150, paddedSize, paddedSize, paddedSize, '#4dabf7', '#e74c3c', {
                 x: kernelX, y: kernelY, z: kernelZ,
                 w: kernelSize, h: kernelSize, d: kernelSize
             });
             
             // Draw kernel
-            drawText('Kernel (3×3×3)', 400, 30);
+            drawText('Kernel (3×3×3)', 400, 70);
             const kernelStartX = 350;
-            const kernelStartY = 100;
+            const kernelStartY = 150;
             for (let z = kernelSize - 1; z >= 0; z--) {
                 for (let y = 0; y < kernelSize; y++) {
                     for (let x = 0; x < kernelSize; x++) {
@@ -507,16 +507,16 @@
             }
             
             // Draw arrow
-            drawArrow(300, 200, 330, 200);
-            drawText('Convolve', 315, 190, 12);
+            drawArrow(300, 260, 330, 260);
+            drawText('Convolve', 315, 250, 12);
             
             // Draw output volume
-            drawText('Output (5×5×5)', 600, 30);
+            drawText('Output (5×5×5)', 600, 70);
             const outZ = Math.floor(currentOutput / (outputSize * outputSize));
             const outY = Math.floor((currentOutput % (outputSize * outputSize)) / outputSize);
             const outX = currentOutput % outputSize;
             
-            drawOutputVolume(550, 60, outputSize, outputSize, outputSize, '#a78bfa', {
+            drawOutputVolume(550, 150, outputSize, outputSize, outputSize, '#a78bfa', {
                 x: outX, y: outY, z: outZ
             });
             
