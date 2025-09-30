@@ -12,11 +12,13 @@ __device__ __forceinline__ int flatten3D(const int x, const int y, const int z,
     return z * dim_y * dim_x + y * dim_x + x;
 }
 
+
 __device__ __forceinline__ int clamp(int x, int a, int b) {
     return max(a, min(x, b - 1));
 }
 
 }  // namespace
+
 
 cudaError_t uploadConvolutionKernelToConstantMemory(const float* h_kernel,
                                                    const int kernel_radius_x,
@@ -63,114 +65,6 @@ size_t convolution3DSharedTileSizeBytes(const dim3 block_dim,
     return shared_bytes;
 }
 
-__global__ void convolution3DOptimized(
-    float* __restrict__ p_output,
-    const float* __restrict__ p_input,
-    const int width,
-    const int height,
-    const int depth,
-    const int kernel_radius_x,
-    const int kernel_radius_y,
-    const int kernel_radius_z,
-    const bool use_zero_padding)
-{
-    extern __shared__ float s_tile_1d[];
-
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
-    const int tz = threadIdx.z;
-
-    const int x = blockIdx.x * blockDim.x + tx;
-    const int y = blockIdx.y * blockDim.y + ty;
-    const int z = blockIdx.z * blockDim.z + tz;
-    if (x >= width || y >= height || z >= depth) {
-        return;
-    }
-
-    const int block_base_x = blockIdx.x * blockDim.x;
-    const int block_base_y = blockIdx.y * blockDim.y;
-    const int block_base_z = blockIdx.z * blockDim.z;
-
-    const int tile_dim_x = min(blockDim.x, width - block_base_x);
-    const int tile_dim_y = min(blockDim.y, height - block_base_y);
-    const int tile_dim_z = min(blockDim.z, depth - block_base_z);
-
-    const int kernel_dim_x = 2 * kernel_radius_x + 1;
-    const int kernel_dim_y = 2 * kernel_radius_y + 1;
-    const int kernel_dim_z = 2 * kernel_radius_z + 1;
-
-    const int shared_dim_x = tile_dim_x + kernel_dim_x - 1;
-    const int shared_dim_y = tile_dim_y + kernel_dim_y - 1;
-    const int shared_dim_z = tile_dim_z + kernel_dim_z - 1;
-
-    const int shared_stride_y = shared_dim_x;
-    const int shared_stride_z = shared_dim_x * shared_dim_y;
-
-    for (int sz = tz; sz < shared_dim_z; sz += tile_dim_z) {
-        const int global_z = block_base_z + sz - kernel_radius_z;
-        for (int sy = ty; sy < shared_dim_y; sy += tile_dim_y) {
-            const int global_y = block_base_y + sy - kernel_radius_y;
-            for (int sx = tx; sx < shared_dim_x; sx += tile_dim_x) {
-                const int global_x = block_base_x + sx - kernel_radius_x;
-                const int shared_idx = sz * shared_stride_z + sy * shared_stride_y + sx;
-                const int src_x = clamp(global_x, 0, width);
-                const int src_y = clamp(global_y, 0, height);
-                const int src_z = clamp(global_z, 0, depth);
-                const int global_idx = flatten3D(src_x, src_y, src_z, width, height);
-                const bool is_in_bounds = (global_x == src_x) && (global_y == src_y) && (global_z == src_z);
-                s_tile_1d[shared_idx] = p_input[global_idx] * static_cast<float>(is_in_bounds || !use_zero_padding);
-            }
-        }
-    }
-
-    __syncthreads();
-
-    if (tx < tile_dim_x && ty < tile_dim_y && tz < tile_dim_z) {
-        float sum = 0.0f;
-        for (int kz = 0; kz < kernel_dim_z; ++kz) {
-            for (int ky = 0; ky < kernel_dim_y; ++ky) {
-                for (int kx = 0; kx < kernel_dim_x; ++kx) {
-                    const int kernel_idx = flatten3D(kx, ky, kz, kernel_dim_x, kernel_dim_y);
-                    const int tile_x = tx + kx;
-                    const int tile_y = ty + ky;
-                    const int tile_z = tz + kz;
-                    const int tile_idx = tile_z * shared_stride_z + tile_y * shared_stride_y + tile_x;
-                    sum += s_tile_1d[tile_idx] * c_kernel[kernel_idx];
-                }
-            }
-        }
-
-        const int output_x = block_base_x + tx;
-        const int output_y = block_base_y + ty;
-        const int output_z = block_base_z + tz;
-
-        if (output_x < width && output_y < height && output_z < depth) {
-            const int output_idx = flatten3D(output_x, output_y, output_z, width, height);
-            p_output[output_idx] = sum;
-        }
-    }
-}
-
-
-// Wrapper function to be called from C++ code
-extern "C" void launch_convolution3DOptimized(
-    const dim3 gridDim,
-    const dim3 blockDim,
-    const size_t shared_size,
-    float* p_output,
-    const float* p_input,
-    const int width,
-    const int height,
-    const int depth,
-    const int kernel_radius_x,
-    const int kernel_radius_y,
-    const int kernel_radius_z,
-    const bool use_zero_padding)
-{
-    convolution3DOptimized<<<gridDim, blockDim, shared_size>>>(
-        p_output, p_input, width, height, depth,
-        kernel_radius_x, kernel_radius_y, kernel_radius_z, use_zero_padding);
-}
 
 __global__ void convolution3DBaseline(
     float* __restrict__ p_output,
@@ -198,21 +92,26 @@ __global__ void convolution3DBaseline(
 
     float sum = 0.0f;
 
+    // Iterate over the kernel
     for (int kz = 0; kz < kernel_dim_z; ++kz) {
         const int input_z = z + kz - kernel_radius_z;        
         for (int ky = 0; ky < kernel_dim_y; ++ky) {
             const int input_y = y + ky - kernel_radius_y;            
             for (int kx = 0; kx < kernel_dim_x; ++kx) {
                 const int input_x = x + kx - kernel_radius_x;
+                
+                // Handle boundary conditions
                 const int clamped_x = clamp(input_x, 0, width);
                 const int clamped_y = clamp(input_y, 0, height);
                 const int clamped_z = clamp(input_z, 0, depth);
                 const bool is_in_bounds = (input_x == clamped_x) && (input_y == clamped_y) && (input_z == clamped_z);
+
+                // Load input and kernel values
                 const int input_idx = flatten3D(clamped_x, clamped_y, clamped_z, width, height);
                 const float input_val = p_input[input_idx] * static_cast<float>(is_in_bounds || !use_zero_padding);
-
                 const int kernel_idx = flatten3D(kx, ky, kz, kernel_dim_x, kernel_dim_y);
                 const float kernel_val = p_kernel[kernel_idx];
+
                 sum += input_val * kernel_val;
             }
         }
@@ -222,8 +121,8 @@ __global__ void convolution3DBaseline(
     p_output[output_idx] = sum;
 }
 
-// Wrapper function to be called from C++ code
-extern "C" void launch_convolution3DBaseline(
+
+extern "C" void launchConvolution3DBaseline(
     const dim3 gridDim,
     const dim3 blockDim,
     float* p_output,
@@ -239,6 +138,125 @@ extern "C" void launch_convolution3DBaseline(
 {
     convolution3DBaseline<<<gridDim, blockDim>>>(
         p_output, p_input, p_kernel, width, height, depth,
+        kernel_radius_x, kernel_radius_y, kernel_radius_z, use_zero_padding);
+}
+
+
+__global__ void convolution3DOptimized(
+    float* __restrict__ p_output,
+    const float* __restrict__ p_input,
+    const int width,
+    const int height,
+    const int depth,
+    const int kernel_radius_x,
+    const int kernel_radius_y,
+    const int kernel_radius_z,
+    const bool use_zero_padding)
+{
+    
+    // Dynamically allocated shared memory. Size is passed at kernel launch.
+    extern __shared__ float s_tile_1d[];
+
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
+    const int tz = threadIdx.z;
+
+    const int block_base_x = blockIdx.x * blockDim.x;
+    const int block_base_y = blockIdx.y * blockDim.y;
+    const int block_base_z = blockIdx.z * blockDim.z;
+
+    // Global position of the start of the output tile this block computes
+    const int x = block_base_x + tx;
+    const int y = block_base_y + ty;
+    const int z = block_base_z + tz;
+
+    if (x >= width || y >= height || z >= depth) {
+        return;
+    }
+
+    const int tile_dim_x = min(blockDim.x, width - block_base_x);
+    const int tile_dim_y = min(blockDim.y, height - block_base_y);
+    const int tile_dim_z = min(blockDim.z, depth - block_base_z);
+
+    const int kernel_dim_x = 2 * kernel_radius_x + 1;
+    const int kernel_dim_y = 2 * kernel_radius_y + 1;
+    const int kernel_dim_z = 2 * kernel_radius_z + 1;
+
+    const int shared_dim_x = tile_dim_x + kernel_dim_x - 1;
+    const int shared_dim_y = tile_dim_y + kernel_dim_y - 1;
+    const int shared_dim_z = tile_dim_z + kernel_dim_z - 1;
+
+    const int shared_stride_y = shared_dim_x;
+    const int shared_stride_z = shared_dim_x * shared_dim_y;
+
+    // Load data into shared memory
+    for (int sz = tz; sz < shared_dim_z; sz += tile_dim_z) {
+        const int global_z = block_base_z + sz - kernel_radius_z;
+        for (int sy = ty; sy < shared_dim_y; sy += tile_dim_y) {
+            const int global_y = block_base_y + sy - kernel_radius_y;
+            for (int sx = tx; sx < shared_dim_x; sx += tile_dim_x) {
+                const int global_x = block_base_x + sx - kernel_radius_x;
+                // Handle boundary conditions
+                const int shared_idx = sz * shared_stride_z + sy * shared_stride_y + sx;
+                const int src_x = clamp(global_x, 0, width);
+                const int src_y = clamp(global_y, 0, height);
+                const int src_z = clamp(global_z, 0, depth);
+                const int global_idx = flatten3D(src_x, src_y, src_z, width, height);
+                const bool is_in_bounds = (global_x == src_x) && (global_y == src_y) && (global_z == src_z);
+
+                s_tile_1d[shared_idx] = p_input[global_idx] * static_cast<float>(is_in_bounds || !use_zero_padding);
+            }
+        }
+    }
+
+    __syncthreads();
+    
+    // Compute convolution
+    if (tx < tile_dim_x && ty < tile_dim_y && tz < tile_dim_z) {
+        float sum = 0.0f;
+        // Iterate over the kernel and saved tile
+        for (int kz = 0; kz < kernel_dim_z; ++kz) {
+            for (int ky = 0; ky < kernel_dim_y; ++ky) {
+                for (int kx = 0; kx < kernel_dim_x; ++kx) {
+                    const int kernel_idx = flatten3D(kx, ky, kz, kernel_dim_x, kernel_dim_y);
+                    const int tile_x = tx + kx;
+                    const int tile_y = ty + ky;
+                    const int tile_z = tz + kz;
+                    const int tile_idx = tile_z * shared_stride_z + tile_y * shared_stride_y + tile_x;
+                    sum += s_tile_1d[tile_idx] * c_kernel[kernel_idx];
+                }
+            }
+        }
+
+        const int output_x = block_base_x + tx;
+        const int output_y = block_base_y + ty;
+        const int output_z = block_base_z + tz;
+
+        // Write the result
+        if (output_x < width && output_y < height && output_z < depth) {
+            const int output_idx = flatten3D(output_x, output_y, output_z, width, height);
+            p_output[output_idx] = sum;
+        }
+    }
+}
+
+
+extern "C" void launchConvolution3DOptimized(
+    const dim3 gridDim,
+    const dim3 blockDim,
+    const size_t shared_size,
+    float* p_output,
+    const float* p_input,
+    const int width,
+    const int height,
+    const int depth,
+    const int kernel_radius_x,
+    const int kernel_radius_y,
+    const int kernel_radius_z,
+    const bool use_zero_padding)
+{
+    convolution3DOptimized<<<gridDim, blockDim, shared_size>>>(
+        p_output, p_input, width, height, depth,
         kernel_radius_x, kernel_radius_y, kernel_radius_z, use_zero_padding);
 }
 
@@ -260,18 +278,19 @@ __global__ void convolutionRowX(
     const int ty = threadIdx.y;
     const int tz = threadIdx.z;
 
-    // Global position of the start of the output tile this block computes
-    const int x = blockIdx.x * blockDim.x + tx;
-    const int y = blockIdx.y * blockDim.y + ty;
-    const int z = blockIdx.z * blockDim.z + tz;
-    if (x >= width || y >= height || z >= depth) {
-        return;
-    }
-
     const int block_base_x = blockIdx.x * blockDim.x;
     const int block_base_y = blockIdx.y * blockDim.y;
     const int block_base_z = blockIdx.z * blockDim.z;
 
+    // Global position of the start of the output tile this block computes
+    const int x = block_base_x + tx;
+    const int y = block_base_y + ty;
+    const int z = block_base_z + tz;
+
+    if (x >= width || y >= height || z >= depth) {
+        return;
+    }
+    
     const int tile_dim_x = min(blockDim.x, width - block_base_x);
     const int tile_dim_y = min(blockDim.y, height - block_base_y);
     const int tile_dim_z = min(blockDim.z, depth - block_base_z);
@@ -297,6 +316,7 @@ __global__ void convolutionRowX(
     // Compute convolution
     if (tx < tile_dim_x && ty < tile_dim_y && tz < tile_dim_z) {
         float sum = 0.0f;
+        // Iterate over the kernel and saved tile
         for (int kx = 0; kx < kernel_dim_x; ++kx) {
             const int tile_x = tx + kx;
             const int tile_idx = tz * shared_stride_z + ty * shared_width + tile_x;
@@ -307,6 +327,7 @@ __global__ void convolutionRowX(
         const int output_y = block_base_y + ty;
         const int output_z = block_base_z + tz;
 
+        // Write the result
         if (output_x < width && output_y < height && output_z < depth) {
             const int output_idx = flatten3D(output_x, output_y, output_z, width, height);
             p_output[output_idx] = sum;
@@ -332,17 +353,18 @@ __global__ void convolutionRowY(
     const int ty = threadIdx.y;
     const int tz = threadIdx.z;
 
-    // Global position of the start of the output tile this block computes
-    const int x = blockIdx.x * blockDim.x + tx;
-    const int y = blockIdx.y * blockDim.y + ty;
-    const int z = blockIdx.z * blockDim.z + tz;
-    if (x >= width || y >= height || z >= depth) {
-        return;
-    }
-
     const int block_base_x = blockIdx.x * blockDim.x;
     const int block_base_y = blockIdx.y * blockDim.y;
     const int block_base_z = blockIdx.z * blockDim.z;
+
+    // Global position of the start of the output tile this block computes
+    const int x = block_base_x + tx;
+    const int y = block_base_y + ty;
+    const int z = block_base_z + tz;
+
+    if (x >= width || y >= height || z >= depth) {
+        return;
+    }
 
     const int tile_dim_x = min(blockDim.x, width - block_base_x);
     const int tile_dim_y = min(blockDim.y, height - block_base_y);
@@ -369,6 +391,7 @@ __global__ void convolutionRowY(
     // Compute convolution
     if (tx < tile_dim_x && ty < tile_dim_y && tz < tile_dim_z) {
         float sum = 0.0f;
+        // Iterate over the kernel and saved tile
         for (int ky = 0; ky < kernel_dim_y; ++ky) {
             const int tile_y = ty + ky;
             const int tile_idx = tz * shared_stride_z + tile_y * tile_dim_x + tx;
@@ -379,12 +402,14 @@ __global__ void convolutionRowY(
         const int output_y = block_base_y + ty;
         const int output_z = block_base_z + tz;
 
+        // Write the result
         if (output_x < width && output_y < height && output_z < depth) {
             const int output_idx = flatten3D(output_x, output_y, output_z, width, height);
             p_output[output_idx] = sum;
         }
     }
 }
+
 
 __global__ void convolutionRowZ(
     float* p_output,
@@ -403,17 +428,17 @@ __global__ void convolutionRowZ(
     const int ty = threadIdx.y;
     const int tz = threadIdx.z;
 
-    // Global position of the start of the output tile this block computes
-    const int x = blockIdx.x * blockDim.x + tx;
-    const int y = blockIdx.y * blockDim.y + ty;
-    const int z = blockIdx.z * blockDim.z + tz;
-    if (x >= width || y >= height || z >= depth) {
-        return;
-    }
-
     const int block_base_x = blockIdx.x * blockDim.x;
     const int block_base_y = blockIdx.y * blockDim.y;
     const int block_base_z = blockIdx.z * blockDim.z;
+
+    // Global position of the start of the output tile this block computes
+    const int x = block_base_x + tx;
+    const int y = block_base_y + ty;
+    const int z = block_base_z + tz;
+    if (x >= width || y >= height || z >= depth) {
+        return;
+    }
 
     const int tile_dim_x = min(blockDim.x, width - block_base_x);
     const int tile_dim_y = min(blockDim.y, height - block_base_y);
@@ -440,6 +465,7 @@ __global__ void convolutionRowZ(
     // Compute convolution
     if (tx < tile_dim_x && ty < tile_dim_y && tz < tile_dim_z) {
         float sum = 0.0f;
+        // Iterate over the kernel and saved tile
         for (int kz = 0; kz < kernel_dim_z; ++kz) {
             const int tile_z = tz + kz;
             const int tile_idx = tile_z * shared_stride_z + ty * tile_dim_x + tx;
@@ -450,6 +476,7 @@ __global__ void convolutionRowZ(
         const int output_y = block_base_y + ty;
         const int output_z = block_base_z + tz;
 
+        // Write the result
         if (output_x < width && output_y < height && output_z < depth) {
             const int output_idx = flatten3D(output_x, output_y, output_z, width, height);
             p_output[output_idx] = sum;
@@ -490,6 +517,7 @@ cudaError_t convolution3DSeparable(
 
     const size_t volume_bytes = volume_elements * sizeof(float);
 
+    // Allocate temporary buffers to hold intermediate results from separable filtering
     float* d_temp_1 = nullptr;
     float* d_temp_2 = nullptr;
 
@@ -518,6 +546,7 @@ cudaError_t convolution3DSeparable(
         return static_cast<unsigned int>(capped);
     };
 
+    // Determine block dimensions
     dim3 block_dim;
     block_dim.x = requested_block_dim.x > 0 ? requested_block_dim.x : clamp_block_dim(width);
     block_dim.y = requested_block_dim.y > 0 ? requested_block_dim.y : clamp_block_dim(height);
@@ -535,6 +564,7 @@ cudaError_t convolution3DSeparable(
         return cleanup(cudaErrorInvalidConfiguration);
     }
 
+    // Determine grid dimensions
     const unsigned int grid_x = (static_cast<unsigned int>(width) + block_dim.x - 1) / block_dim.x;
     const unsigned int grid_y = (static_cast<unsigned int>(height) + block_dim.y - 1) / block_dim.y;
     const unsigned int grid_z = (static_cast<unsigned int>(depth) + block_dim.z - 1) / block_dim.z;
@@ -552,11 +582,13 @@ cudaError_t convolution3DSeparable(
         return cleanup(cudaErrorInvalidConfiguration);
     }
 
+    // Upload the 1D kernel for X-dimension to constant memory
     err = uploadConvolutionKernelToConstantMemory(h_kernel_x, kernel_radius_x, 0, 0);
     if (err != cudaSuccess) {
         return cleanup(err);
     }
 
+    // Launch convolution along X dimension
     convolutionRowX<<<grid_dim, block_dim, shared_x_bytes, stream>>>(
         d_temp_1,
         d_input,
@@ -583,11 +615,13 @@ cudaError_t convolution3DSeparable(
         return cleanup(cudaErrorInvalidConfiguration);
     }
 
+    // Upload the 1D kernel for Y-dimension to constant memory
     err = uploadConvolutionKernelToConstantMemory(h_kernel_y, 0, kernel_radius_y, 0);
     if (err != cudaSuccess) {
         return cleanup(err);
     }
 
+    // Launch convolution along Y dimension
     convolutionRowY<<<grid_dim, block_dim, shared_y_bytes, stream>>>(
         d_temp_2,
         d_temp_1,
@@ -614,11 +648,13 @@ cudaError_t convolution3DSeparable(
         return cleanup(cudaErrorInvalidConfiguration);
     }
 
+    // Upload the 1D kernel for Z-dimension to constant memory
     err = uploadConvolutionKernelToConstantMemory(h_kernel_z, 0, 0, kernel_radius_z);
     if (err != cudaSuccess) {
         return cleanup(err);
     }
 
+    // Launch convolution along Z dimension
     convolutionRowZ<<<grid_dim, block_dim, shared_z_bytes, stream>>>(
         d_output,
         d_temp_2,

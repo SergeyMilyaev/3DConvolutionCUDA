@@ -7,7 +7,7 @@ int clamp(int x, int a, int b) {
 }
 
 // Host-side reference implementation of 3D convolution
-void convolution3D_gold(
+void convolution3DGold(
     float* p_output,
     const float* p_input,
     const float* p_kernel,

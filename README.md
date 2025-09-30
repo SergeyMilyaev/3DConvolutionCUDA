@@ -4,7 +4,7 @@
 
 This project compares several 3D convolution implementations:
 
-* A CPU reference implementation (`convolution3D_gold`)
+* A CPU reference implementation (`convolution3DGold`)
 * A naive CUDA kernel that caches the convolution kernel in constant memory
 * A naive CUDA kernel that reads the kernel from global memory
 * A separable CUDA implementation
@@ -72,7 +72,7 @@ Example: benchmark a 256×256×32 volume with a radius-5 kernel, measuring 50 it
 ```
 
 > **Notes:**
-> * The kernel must fit in CUDA constant memory. Extremely large radii will be rejected with a descriptive error.
+> * The kernel must fit in CUDA constant memory. Extremely large kernels will be rejected with a descriptive error.
 > * The CUDA block dimensions must satisfy hardware limits (≤1024 threads per block and Z ≤ 64).
 
 To remove build artifacts:
@@ -139,7 +139,7 @@ To address the critical lack of data reuse, the kernel is refactored to use shar
     *   **Bottleneck:** The kernel is still memory-bound, but the stall memory dependency is significantly reduced.
     *   **Memory Throughput:** The number of global memory loads has been drastically cut. Instead of multiple loads per output point, the amortized number of loads is now closer to 1. This results in a massive increase in effective memory bandwidth and overall kernel performance.
 
-### Implementation 3: `convolution3DSeparable`
+### Implementation 3: Decomposition with separable 1D convolutions `convolution3DSeparable`
 
 For filters that are "separable," a 3D convolution can be decomposed into three consecutive 1D convolutions: one along the rows (X-axis), one along the columns (Y-axis), and one along the depth (Z-axis). This dramatically reduces the arithmetic complexity. For a `KxKxK` filter, a naive convolution requires $K^3$ multiplications per output voxel, while a separable one requires only $3 \times K$.
 
@@ -154,6 +154,16 @@ For filters that are "separable," a 3D convolution can be decomposed into three 
     *   **Bottleneck:** The performance is entirely dictated by memory bandwidth and the efficiency of the shared memory implementation for the strided Y and Z passes.
     *   **Trade-off:** While computationally far superior, a separable convolution can be slower than an optimized naive convolution if the kernel size is small (e.g., 3x3x3), because the overhead of three kernel launches and intermediate memory traffic outweighs the arithmetic savings. For larger separable kernels, this approach is significantly faster.
 
+### Final Performance Analysis
+
+The performance tests were conducted in Windows Subsystem for Linux with Intel Core Ultra 7 155H CPU and NVIDIA RTX 500 Ada GPU. A single random input with the size 128x128x8 was convolved with 7x7x7 random kernel and median executions times of 20 test runs after 5 warmup runs for each implementation are reported below.
+
+| Implementation | Key Feature | Median time (ms) | Primary Limiter |
+|---|---|---|---|
+| 1. `convolution3DGold` | Baseline single-thread CPU processing | 5616.53 | Slow sequential processing |
+| 2. `convolution3DBaseline` | Direct Global Memory Access | 2.67674 | Redundant Global Memory Access |
+| 3. `convolution3DOptimized` | Shared/Constant Memory Tiling | 1.04858 | Global Memory Latency (Tile Loading) |
+| 4. `convolution3DSeparable` | Three 1D Passes | 0.56832 | Strided Global Memory Access (Y/Z passes) |
 
 
 ## Code organization
@@ -163,3 +173,4 @@ For filters that are "separable," a 3D convolution can be decomposed into three 
 | `src/` | CUDA and C++ sources for the benchmark executable and helper routines. |
 | `tests/` | GoogleTest-based unit tests that validate the CPU and CUDA kernels. |
 | `bin/` | Build output directory containing compiled binaries such as `convolution3D`. |
+| `Convolution3D.html` | Interactive visualization for 3D convolution operation. |

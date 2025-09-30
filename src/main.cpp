@@ -226,37 +226,37 @@ int main(int argc, char** argv) {
     }
 
     // --- Host Data Allocation and Initialization ---
-    std::vector<float> h_input(vol_size);
-    std::vector<float> h_kernel(kernel_vol);
-    std::vector<float> h_kernel_x(kernel_size);
-    std::vector<float> h_kernel_y(kernel_size);
-    std::vector<float> h_kernel_z(kernel_size);
-    std::vector<float> h_output_cpu(vol_size);
-    std::vector<float> h_output_naive(vol_size);
-    std::vector<float> h_output_naive_global(vol_size);
-    std::vector<float> h_output_separable(vol_size);
+    std::vector<float> host_input(vol_size);
+    std::vector<float> host_kernel(kernel_vol);
+    std::vector<float> host_kernel_x(kernel_size);
+    std::vector<float> host_kernel_y(kernel_size);
+    std::vector<float> host_kernel_z(kernel_size);
+    std::vector<float> host_output_cpu(vol_size);
+    std::vector<float> host_output_naive(vol_size);
+    std::vector<float> host_output_naive_global(vol_size);
+    std::vector<float> host_output_separable(vol_size);
 
     for(size_t i = 0; i < vol_size; ++i) 
-        h_input[i] = (float)rand() / RAND_MAX;
+        host_input[i] = (float)rand() / RAND_MAX;
 
     for (int i = 0; i < kernel_size; ++i) {
-        h_kernel_x[i] = static_cast<float>(rand()) / RAND_MAX;
-        h_kernel_y[i] = static_cast<float>(rand()) / RAND_MAX;
-        h_kernel_z[i] = static_cast<float>(rand()) / RAND_MAX;
+        host_kernel_x[i] = static_cast<float>(rand()) / RAND_MAX;
+        host_kernel_y[i] = static_cast<float>(rand()) / RAND_MAX;
+        host_kernel_z[i] = static_cast<float>(rand()) / RAND_MAX;
     }
 
     for (int kz = 0; kz < kernel_size; ++kz) {
         for (int ky = 0; ky < kernel_size; ++ky) {
             for (int kx = 0; kx < kernel_size; ++kx) {
                 const int idx = kz * kernel_size * kernel_size + ky * kernel_size + kx;
-                h_kernel[idx] = h_kernel_x[kx] * h_kernel_y[ky] * h_kernel_z[kz];
+                host_kernel[idx] = host_kernel_x[kx] * host_kernel_y[ky] * host_kernel_z[kz];
             }
         }
     }
 
     auto measure_cpu_iteration = [&]() -> float {
         const auto start = std::chrono::steady_clock::now();
-        convolution3D_gold(h_output_cpu.data(), h_input.data(), h_kernel.data(),
+        convolution3DGold(host_output_cpu.data(), host_input.data(), host_kernel.data(),
                            width, height, depth,
                            kernel_radius, kernel_radius, kernel_radius,
                            false);
@@ -265,7 +265,7 @@ int main(int argc, char** argv) {
         return elapsed.count();
     };
 
-    std::cout << "=== CPU Reference (convolution3D_gold) ===" << std::endl;
+    std::cout << "=== CPU Reference (convolution3DGold) ===" << std::endl;
     for (int i = 0; i < warmup_iterations; ++i) {
         const float ms = measure_cpu_iteration();
         std::cout << "Warmup iteration " << (i + 1) << "/" << warmup_iterations
@@ -280,7 +280,7 @@ int main(int argc, char** argv) {
         std::cout << "Iteration " << (i + 1) << "/" << num_iterations
                   << " -> " << ms << " ms" << std::endl;
     }
-    print_stats("CPU convolution3D_gold", cpu_timings);
+    print_stats("CPU convolution3DGold", cpu_timings);
 
     auto max_abs_difference = [&](const std::vector<float>& lhs, const std::vector<float>& rhs) {
         double max_diff = 0.0;
@@ -295,16 +295,16 @@ int main(int argc, char** argv) {
     };
 
     // --- GPU Data Allocation ---
-    float* d_input = nullptr;
+    float* device_input = nullptr;
     float* d_output = nullptr;
     float* d_kernel = nullptr;
-    CUDA_CHECK(cudaMalloc(&d_input, vol_bytes));
+    CUDA_CHECK(cudaMalloc(&device_input, vol_bytes));
     CUDA_CHECK(cudaMalloc(&d_output, vol_bytes));
     CUDA_CHECK(cudaMalloc(&d_kernel, kernel_bytes));
-    CUDA_CHECK(cudaMemcpy(d_input, h_input.data(), vol_bytes, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_kernel, h_kernel.data(), kernel_bytes, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(device_input, host_input.data(), vol_bytes, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_kernel, host_kernel.data(), kernel_bytes, cudaMemcpyHostToDevice));
     CUDA_CHECK(uploadConvolutionKernelToConstantMemory(
-        h_kernel.data(), kernel_radius, kernel_radius, kernel_radius));
+        host_kernel.data(), kernel_radius, kernel_radius, kernel_radius));
 
     const dim3 block_dim(block_dim_x, block_dim_y, block_dim_z);
     const dim3 grid_dim((width + block_dim.x - 1) / block_dim.x,
@@ -351,29 +351,29 @@ int main(int argc, char** argv) {
 
         CUDA_CHECK(cudaMemcpy(host_output.data(), d_output, vol_bytes, cudaMemcpyDeviceToHost));
         std::cout << "Max absolute difference |CPU - " << label << "|: "
-                  << max_abs_difference(h_output_cpu, host_output)
+                  << max_abs_difference(host_output_cpu, host_output)
                   << std::endl;
     };
 
     const std::function<void(void)> launch_naive = [&]() {
-        launch_convolution3DOptimized(grid_dim, block_dim, shared_size,
-                                   d_output, d_input,
+        launchConvolution3DOptimized(grid_dim, block_dim, shared_size,
+                                   d_output, device_input,
                                    width, height, depth,
                                    kernel_radius, kernel_radius, kernel_radius,
                                    false);
     };
 
     const std::function<void(void)> launch_naive_global = [&]() {
-        launch_convolution3DBaseline(grid_dim, block_dim,
-                                          d_output, d_input, d_kernel,
+        launchConvolution3DBaseline(grid_dim, block_dim,
+                                          d_output, device_input, d_kernel,
                                           width, height, depth,
                                           kernel_radius, kernel_radius, kernel_radius,
                                           false);
     };
 
     const std::function<void(void)> launch_separable = [&]() {
-        CUDA_CHECK(convolution3DSeparable(d_output, d_input,
-                                          h_kernel_x.data(), h_kernel_y.data(), h_kernel_z.data(),
+        CUDA_CHECK(convolution3DSeparable(d_output, device_input,
+                                          host_kernel_x.data(), host_kernel_y.data(), host_kernel_z.data(),
                                           width, height, depth,
                                           kernel_radius, kernel_radius, kernel_radius,
                                           false,
@@ -385,23 +385,23 @@ int main(int argc, char** argv) {
     benchmark_cuda_kernel("CUDA convolution3DOptimized",
                           launch_naive,
                           timings_naive,
-                          h_output_naive);
+                          host_output_naive);
 
     std::vector<float> timings_naive_global;
     benchmark_cuda_kernel("CUDA convolution3DBaseline",
                           launch_naive_global,
                           timings_naive_global,
-                          h_output_naive_global);
+                          host_output_naive_global);
 
     std::vector<float> timings_separable;
     benchmark_cuda_kernel("CUDA convolution3DSeparable",
                           launch_separable,
                           timings_separable,
-                          h_output_separable);
+                          host_output_separable);
 
     CUDA_CHECK(cudaEventDestroy(gpu_start));
     CUDA_CHECK(cudaEventDestroy(gpu_stop));
-    CUDA_CHECK(cudaFree(d_input));
+    CUDA_CHECK(cudaFree(device_input));
     CUDA_CHECK(cudaFree(d_output));
     CUDA_CHECK(cudaFree(d_kernel));
     

@@ -6,8 +6,10 @@
 
 namespace {
 
+// Test fixture for 3D convolution tests using the baseline CPU 3D convolution implementation
 class Convolution3DTest : public ::testing::Test {
 protected:
+	// Setting small 3x3x3 volume and 3x3x3 kernel for basic tests
 	const int width = 3;
 	const int height = 3;
 	const int depth = 3;
@@ -20,26 +22,31 @@ protected:
 	std::vector<float> kernel;
 	std::vector<float> output;
 
+	// Buffer allocation for each test
 	void SetUp() override {
 		input.resize(volume_elements);
 		kernel.resize(kernel_elements);
 		output.resize(volume_elements);
 	}
 
+	// Setting values for the box filter kernel
 	void setupBoxFilterKernel() {
 		std::fill(kernel.begin(), kernel.end(), 1.0f);
 	}
 
+	// Setting 3D data to all ones
 	void setupOnesVolume() {
 		std::fill(input.begin(), input.end(), 1.0f);
 	}
 
+	// Setting 3D data to an impulse (1 in the center, 0 elsewhere)
 	void setupImpulseVolume() {
 		std::fill(input.begin(), input.end(), 0.0f);
 		const int center_idx = (depth / 2) * (width * height) + (height / 2) * width + (width / 2);
 		input[center_idx] = 1.0f;
 	}
 
+	// Setting values for the Laplacian filter kernel
 	void setupLaplaceKernel() {
 		std::fill(kernel.begin(), kernel.end(), 0.0f);
 		const int center_kernel_idx = (kernel_radius) * (kernel_size * kernel_size) +
@@ -65,12 +72,15 @@ protected:
 
 class Convolution3DGoldTest : public Convolution3DTest {};
 
+
+// Test case for the reference CPU implementation with box filter and
+// padding with border replication
 TEST_F(Convolution3DGoldTest, BoxFilterAllOnesVolume) {
 	setupOnesVolume();
 	setupBoxFilterKernel();
 	std::vector<float> expected(volume_elements, static_cast<float>(kernel_elements));
 
-	convolution3D_gold(output.data(), input.data(), kernel.data(),
+	convolution3DGold(output.data(), input.data(), kernel.data(),
 					   width, height, depth, kernel_radius, kernel_radius, kernel_radius, false);
 
 	for (int idx = 0; idx < volume_elements; ++idx) {
@@ -79,6 +89,8 @@ TEST_F(Convolution3DGoldTest, BoxFilterAllOnesVolume) {
 	}
 }
 
+// Test case for the reference CPU implementation with Laplacian filter and
+// padding with border replication
 TEST_F(Convolution3DGoldTest, LaplaceFilterImpulseVolume) {
 	setupImpulseVolume();
 	setupLaplaceKernel();
@@ -99,7 +111,7 @@ TEST_F(Convolution3DGoldTest, LaplaceFilterImpulseVolume) {
 		}
 	}
 
-	convolution3D_gold(output.data(), input.data(), kernel.data(),
+	convolution3DGold(output.data(), input.data(), kernel.data(),
 					   width, height, depth, kernel_radius, kernel_radius, kernel_radius, false);
 
 	for (int idx = 0; idx < volume_elements; ++idx) {
@@ -108,6 +120,8 @@ TEST_F(Convolution3DGoldTest, LaplaceFilterImpulseVolume) {
 	}
 }
 
+
+// Test case for the reference CPU implementation with box filter and zero padding
 TEST_F(Convolution3DGoldTest, BoxFilterAllOnesVolumeZeroPadding) {
 	setupOnesVolume();
 	setupBoxFilterKernel();
@@ -129,7 +143,7 @@ TEST_F(Convolution3DGoldTest, BoxFilterAllOnesVolumeZeroPadding) {
 		}
 	}
 
-	convolution3D_gold(output.data(), input.data(), kernel.data(),
+	convolution3DGold(output.data(), input.data(), kernel.data(),
 					   width, height, depth, kernel_radius, kernel_radius, kernel_radius, true);
 
 	for (int idx = 0; idx < volume_elements; ++idx) {
@@ -138,72 +152,13 @@ TEST_F(Convolution3DGoldTest, BoxFilterAllOnesVolumeZeroPadding) {
 	}
 }
 
-class Convolution3DCUDATest : public Convolution3DTest {
-protected:
-	float *d_input = nullptr, *d_output = nullptr;
 
-	void SetUp() override {
-		Convolution3DTest::SetUp();
-		cudaMalloc(&d_input, volume_elements * sizeof(float));
-		cudaMalloc(&d_output, volume_elements * sizeof(float));
-	}
-
-	void TearDown() override {
-		cudaFree(d_input);
-		cudaFree(d_output);
-	}
-
-	void runCUDATest(bool use_zero_padding) {
-		std::vector<float> expected(volume_elements);
-		convolution3D_gold(expected.data(), input.data(), kernel.data(),
-						   width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
-
-		cudaMemcpy(d_input, input.data(), volume_elements * sizeof(float), cudaMemcpyHostToDevice);
-
-		cudaError_t err = uploadConvolutionKernelToConstantMemory(kernel.data(), kernel_radius, kernel_radius, kernel_radius);
-		ASSERT_EQ(err, cudaSuccess);
-
-		dim3 blockDim(2, 2, 2);
-		dim3 gridDim((width + blockDim.x - 1) / blockDim.x,
-					 (height + blockDim.y - 1) / blockDim.y,
-					 (depth + blockDim.z - 1) / blockDim.z);
-		size_t shared_size = convolution3DSharedTileSizeBytes(blockDim, kernel_radius, kernel_radius, kernel_radius);
-		launch_convolution3DOptimized(gridDim, blockDim, shared_size, d_output, d_input, width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
-
-		err = cudaDeviceSynchronize();
-		ASSERT_EQ(err, cudaSuccess);
-
-		cudaMemcpy(output.data(), d_output, volume_elements * sizeof(float), cudaMemcpyDeviceToHost);
-
-		for (int idx = 0; idx < volume_elements; ++idx) {
-			EXPECT_FLOAT_EQ(expected[idx], output[idx])
-				<< "Mismatch at index " << idx;
-		}
-	}
-};
-
-TEST_F(Convolution3DCUDATest, BoxFilterAllOnesVolumeZeroPadding) {
-	setupOnesVolume();
-	setupBoxFilterKernel();
-	runCUDATest(true);
-}
-
-TEST_F(Convolution3DCUDATest, LaplaceFilterImpulseVolumeZeroPadding) {
-	setupImpulseVolume();
-	setupLaplaceKernel();
-	runCUDATest(true);
-}
-
-TEST_F(Convolution3DCUDATest, BoxFilterAllOnesVolumeNoPadding) {
-	setupOnesVolume();
-	setupBoxFilterKernel();
-	runCUDATest(false);
-}
-
-class Convolution3DCUDAGlobalTest : public Convolution3DTest {
+// Test fixture for 3D convolution tests using the CUDA baseline 3D convolution implementation
+class Convolution3DCUDABaselineTest : public Convolution3DTest {
 protected:
 	float *d_input = nullptr, *d_output = nullptr, *d_kernel = nullptr;
 
+	// Memory allocation on GPU for each test
 	void SetUp() override {
 		Convolution3DTest::SetUp();
 		cudaMalloc(&d_input, volume_elements * sizeof(float));
@@ -211,15 +166,17 @@ protected:
 		cudaMalloc(&d_kernel, kernel_elements * sizeof(float));
 	}
 
+	// Memory deallocation GPU buffers after each test
 	void TearDown() override {
 		cudaFree(d_input);
 		cudaFree(d_output);
 		cudaFree(d_kernel);
 	}
 
+	// Running the CUDA baseline test with given padding mode
 	void runCUDAGlobalTest(bool use_zero_padding) {
 		std::vector<float> expected(volume_elements);
-		convolution3D_gold(expected.data(), input.data(), kernel.data(),
+		convolution3DGold(expected.data(), input.data(), kernel.data(),
 						   width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
 
 		cudaMemcpy(d_input, input.data(), volume_elements * sizeof(float), cudaMemcpyHostToDevice);
@@ -229,7 +186,7 @@ protected:
 		dim3 gridDim((width + blockDim.x - 1) / blockDim.x,
 					 (height + blockDim.y - 1) / blockDim.y,
 					 (depth + blockDim.z - 1) / blockDim.z);
-		launch_convolution3DBaseline(gridDim, blockDim, d_output, d_input, d_kernel, width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
+		launchConvolution3DBaseline(gridDim, blockDim, d_output, d_input, d_kernel, width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
 
 		cudaError_t err = cudaDeviceSynchronize();
 		ASSERT_EQ(err, cudaSuccess);
@@ -243,18 +200,117 @@ protected:
 	}
 };
 
-TEST_F(Convolution3DCUDAGlobalTest, BoxFilterAllOnesVolumeZeroPadding) {
+// Test case for the CUDA baseline implementation with box filter and zero padding
+TEST_F(Convolution3DCUDABaselineTest, BoxFilterAllOnesVolumeZeroPadding) {
 	setupOnesVolume();
 	setupBoxFilterKernel();
 	runCUDAGlobalTest(true);
 }
 
-TEST_F(Convolution3DCUDAGlobalTest, LaplaceFilterImpulseVolumeZeroPadding) {
+// Test case for the CUDA baseline implementation with Laplacian filter and zero padding
+TEST_F(Convolution3DCUDABaselineTest, LaplaceFilterImpulseVolumeZeroPadding) {
 	setupImpulseVolume();
 	setupLaplaceKernel();
 	runCUDAGlobalTest(true);
 }
 
+// Test case for the CUDA baseline implementation with box filter and
+// padding with border replication
+TEST_F(Convolution3DCUDABaselineTest, BoxFilterAllOnesVolumeReplicationPadding) {
+	setupOnesVolume();
+	setupBoxFilterKernel();
+	runCUDAGlobalTest(false);
+}
+
+// Test case for the CUDA baseline implementation with Laplacian filter and
+// padding with border replication
+TEST_F(Convolution3DCUDABaselineTest, LaplaceFilterImpulseVolumeReplicationPadding) {
+	setupImpulseVolume();
+	setupLaplaceKernel();
+	runCUDAGlobalTest(false);
+}
+
+
+// Test fixture for 3D convolution tests using the CUDA optimized 3D convolution implementation
+class Convolution3DOptimizedCUDATest : public Convolution3DTest {
+protected:
+	float *d_input = nullptr, *d_output = nullptr;
+
+	// Memory allocation on GPU for each test
+	void SetUp() override {
+		Convolution3DTest::SetUp();
+		cudaMalloc(&d_input, volume_elements * sizeof(float));
+		cudaMalloc(&d_output, volume_elements * sizeof(float));
+	}
+
+	// Memory deallocation GPU buffers after each test
+	void TearDown() override {
+		cudaFree(d_input);
+		cudaFree(d_output);
+	}
+
+	// Run the CUDA test with optimized kernel
+	void runCUDATest(bool use_zero_padding) {
+		std::vector<float> expected(volume_elements);
+		convolution3DGold(expected.data(), input.data(), kernel.data(),
+						   width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
+
+		cudaMemcpy(d_input, input.data(), volume_elements * sizeof(float), cudaMemcpyHostToDevice);
+
+		cudaError_t err = uploadConvolutionKernelToConstantMemory(kernel.data(), kernel_radius, kernel_radius, kernel_radius);
+		ASSERT_EQ(err, cudaSuccess);
+
+		dim3 blockDim(2, 2, 2);
+		dim3 gridDim((width + blockDim.x - 1) / blockDim.x,
+					 (height + blockDim.y - 1) / blockDim.y,
+					 (depth + blockDim.z - 1) / blockDim.z);
+		size_t shared_size = convolution3DSharedTileSizeBytes(blockDim, kernel_radius, kernel_radius, kernel_radius);
+		launchConvolution3DOptimized(gridDim, blockDim, shared_size, d_output, d_input, width, height, depth, kernel_radius, kernel_radius, kernel_radius, use_zero_padding);
+
+		err = cudaDeviceSynchronize();
+		ASSERT_EQ(err, cudaSuccess);
+
+		cudaMemcpy(output.data(), d_output, volume_elements * sizeof(float), cudaMemcpyDeviceToHost);
+
+		for (int idx = 0; idx < volume_elements; ++idx) {
+			EXPECT_FLOAT_EQ(expected[idx], output[idx])
+				<< "Mismatch at index " << idx;
+		}
+	}
+};
+
+// Test case for the CUDA optimized implementation with box filter and zero padding
+TEST_F(Convolution3DOptimizedCUDATest, BoxFilterAllOnesVolumeZeroPadding) {
+	setupOnesVolume();
+	setupBoxFilterKernel();
+	runCUDATest(true);
+}
+
+// Test case for the CUDA optimized implementation with Laplacian filter and zero padding
+TEST_F(Convolution3DOptimizedCUDATest, LaplaceFilterImpulseVolumeZeroPadding) {
+	setupImpulseVolume();
+	setupLaplaceKernel();
+	runCUDATest(true);
+}
+
+// Test case for the CUDA optimized implementation with box filter and
+// padding with border replication
+TEST_F(Convolution3DOptimizedCUDATest, BoxFilterAllOnesVolumeReplicationPadding) {
+	setupOnesVolume();
+	setupBoxFilterKernel();
+	runCUDATest(false);
+}
+
+// Test case for the CUDA optimized implementation with Laplacian filter and
+// padding with border replication
+TEST_F(Convolution3DOptimizedCUDATest, LaplaceFilterImpulseVolumeReplicationPadding) {
+	setupImpulseVolume();
+	setupLaplaceKernel();
+	runCUDATest(false);
+}
+
+
+// Test fixture for 3D convolution tests using the CUDA separable 3D convolution implementation
 class Convolution3DSeparableCUDATest : public Convolution3DTest {
 protected:
 	float *d_input = nullptr, *d_output = nullptr;
@@ -262,6 +318,7 @@ protected:
 	std::vector<float> kernel_y;
 	std::vector<float> kernel_z;
 
+	// Memory allocation on GPU for each test
 	void SetUp() override {
 		Convolution3DTest::SetUp();
 		kernel_x.resize(kernel_size);
@@ -271,11 +328,13 @@ protected:
 		ASSERT_EQ(cudaSuccess, cudaMalloc(&d_output, volume_elements * sizeof(float)));
 	}
 
+	// Memory deallocation GPU buffers after each test
 	void TearDown() override {
 		cudaFree(d_input);
 		cudaFree(d_output);
 	}
 
+	// Setting values for a separable kernel (outer product of 3 one-dimensional kernels)
 	void setupSeparableKernel() {
 		ASSERT_EQ(kernel_size, 3);
 		// Symmetric kernels for each axis
@@ -298,15 +357,17 @@ protected:
 		}
 	}
 
+	// Setting 3D data to a ramp pattern for better coverage of convolution effects
 	void setupRampVolume() {
 		for (int idx = 0; idx < volume_elements; ++idx) {
 			input[idx] = static_cast<float>((idx % 7) - 3);
 		}
 	}
 
+	// Running the CUDA separable test with given padding mode and block configuration
 	void runSeparableTest(bool use_zero_padding, dim3 block_dim = dim3(0, 0, 0)) {
 		std::vector<float> expected(volume_elements);
-		convolution3D_gold(expected.data(), input.data(), kernel.data(),
+		convolution3DGold(expected.data(), input.data(), kernel.data(),
 				width, height, depth,
 				kernel_radius, kernel_radius, kernel_radius,
 				use_zero_padding);
@@ -336,35 +397,27 @@ protected:
 	}
 };
 
-TEST_F(Convolution3DSeparableCUDATest, RampVolumeClampPadding) {
+// Test case for the CUDA separable implementation with box filter and
+// padding with border replication
+TEST_F(Convolution3DSeparableCUDATest, RampVolumeClampReplicationPadding) {
 	setupRampVolume();
 	setupSeparableKernel();
 	runSeparableTest(false);
 }
 
+// Test case for the CUDA separable implementation with box filter and zero padding
 TEST_F(Convolution3DSeparableCUDATest, RampVolumeZeroPadding) {
 	setupRampVolume();
 	setupSeparableKernel();
 	runSeparableTest(true);
 }
 
+// Test case for the CUDA separable implementation with custom block configuration
 TEST_F(Convolution3DSeparableCUDATest, CustomBlockConfiguration) {
 	setupRampVolume();
 	setupSeparableKernel();
 	const dim3 custom_block(3, 2, 1);
 	runSeparableTest(false, custom_block);
-}
-
-TEST_F(Convolution3DCUDAGlobalTest, BoxFilterAllOnesVolumeNoPadding) {
-	setupOnesVolume();
-	setupBoxFilterKernel();
-	runCUDAGlobalTest(false);
-}
-
-TEST_F(Convolution3DCUDAGlobalTest, LaplaceFilterImpulseVolumeNoPadding) {
-	setupImpulseVolume();
-	setupLaplaceKernel();
-	runCUDAGlobalTest(false);
 }
 
 }  // namespace
