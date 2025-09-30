@@ -5,6 +5,8 @@
 #include <cmath>
 #include <chrono>
 #include <functional>
+#include <string>
+#include <cstdlib>
 #include <cuda_runtime.h>
 
 #include "convolution3D_common.h"
@@ -17,6 +19,120 @@
         std::cerr << "CUDA Error: " << cudaGetErrorString(e) << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
         exit(EXIT_FAILURE); \
     } \
+}
+
+struct BenchmarkConfig {
+    int width = 128;
+    int height = 128;
+    int depth = 8;
+    int kernel_radius = 7;
+    int num_iterations = 20;
+    int warmup_iterations = 5;
+};
+
+enum class ArgParseStatus {
+    Success,
+    ShowHelp,
+    Error
+};
+
+void print_usage(const char* program_name) {
+    std::cout << "Usage: " << program_name << " [options]\n"
+              << "Options:\n"
+              << "  --width <int>             Volume width (default: 128)\n"
+              << "  --height <int>            Volume height (default: 128)\n"
+              << "  --depth <int>             Volume depth (default: 8)\n"
+              << "  --kernel-radius <int>     Kernel radius (default: 7)\n"
+              << "  --iterations <int>        Benchmark iterations (default: 20)\n"
+              << "  --warmup-iterations <int> Warmup iterations (default: 5)\n"
+              << "  -h, --help                Show this help message\n";
+}
+
+bool assign_positive_int(const std::string& value,
+                         const std::string& name,
+                         int min_value,
+                         BenchmarkConfig& config,
+                         int BenchmarkConfig::*member) {
+    try {
+        size_t processed = 0;
+        const int parsed = std::stoi(value, &processed);
+        if (processed != value.size() || parsed < min_value) {
+            std::cerr << "Invalid value for " << name << ": " << value
+                      << " (expected integer >= " << min_value << ")" << std::endl;
+            return false;
+        }
+        config.*member = parsed;
+        return true;
+    } catch (const std::exception&) {
+        std::cerr << "Invalid value for " << name << ": " << value << std::endl;
+        return false;
+    }
+}
+
+ArgParseStatus parse_arguments(int argc, char** argv, BenchmarkConfig& config) {
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        const auto require_value = [&](const std::string& option_name, std::string& out_value) -> bool {
+            if (i + 1 >= argc) {
+                std::cerr << option_name << " requires a value" << std::endl;
+                return false;
+            }
+            out_value = argv[++i];
+            return true;
+        };
+
+        if (arg == "--width") {
+            std::string value;
+            if (!require_value(arg, value)) return ArgParseStatus::Error;
+            if (!assign_positive_int(value, arg, 1, config, &BenchmarkConfig::width)) {
+                return ArgParseStatus::Error;
+            }
+        } else if (arg == "--height") {
+            std::string value;
+            if (!require_value(arg, value)) return ArgParseStatus::Error;
+            if (!assign_positive_int(value, arg, 1, config, &BenchmarkConfig::height)) {
+                return ArgParseStatus::Error;
+            }
+        } else if (arg == "--depth") {
+            std::string value;
+            if (!require_value(arg, value)) return ArgParseStatus::Error;
+            if (!assign_positive_int(value, arg, 1, config, &BenchmarkConfig::depth)) {
+                return ArgParseStatus::Error;
+            }
+        } else if (arg == "--kernel-radius") {
+            std::string value;
+            if (!require_value(arg, value)) return ArgParseStatus::Error;
+            if (!assign_positive_int(value, arg, 0, config, &BenchmarkConfig::kernel_radius)) {
+                return ArgParseStatus::Error;
+            }
+        } else if (arg == "--iterations") {
+            std::string value;
+            if (!require_value(arg, value)) return ArgParseStatus::Error;
+            if (!assign_positive_int(value, arg, 1, config, &BenchmarkConfig::num_iterations)) {
+                return ArgParseStatus::Error;
+            }
+        } else if (arg == "--warmup-iterations") {
+            std::string value;
+            if (!require_value(arg, value)) return ArgParseStatus::Error;
+            if (!assign_positive_int(value, arg, 0, config, &BenchmarkConfig::warmup_iterations)) {
+                return ArgParseStatus::Error;
+            }
+        } else if (arg == "--help" || arg == "-h") {
+            print_usage(argv[0]);
+            return ArgParseStatus::ShowHelp;
+        } else {
+            std::cerr << "Unknown option: " << arg << std::endl;
+            print_usage(argv[0]);
+            return ArgParseStatus::Error;
+        }
+    }
+
+    if (config.warmup_iterations > config.num_iterations) {
+        std::cerr << "Warmup iterations must not exceed total iterations" << std::endl;
+        return ArgParseStatus::Error;
+    }
+
+    return ArgParseStatus::Success;
 }
 
 void print_stats(const std::string& name, const std::vector<float>& timings) {
@@ -37,21 +153,37 @@ void print_stats(const std::string& name, const std::vector<float>& timings) {
     std::cout << "------------------------------------" << std::endl;
 }
 
-int main() {
-    // --- Benchmark Configuration ---
-    const int width = 128;
-    const int height = 128;
-    const int depth = 8;
-    const int kernel_radius = 7;
-    const int num_iterations = 20;
-    const int warmup_iterations = 5;
+int main(int argc, char** argv) {
+    BenchmarkConfig config;
+    const ArgParseStatus arg_status = parse_arguments(argc, argv, config);
+    if (arg_status == ArgParseStatus::ShowHelp) {
+        return EXIT_SUCCESS;
+    }
+    if (arg_status == ArgParseStatus::Error) {
+        return EXIT_FAILURE;
+    }
 
-    const size_t vol_size = (size_t)width * height * depth;
+    // --- Benchmark Configuration ---
+    const int width = config.width;
+    const int height = config.height;
+    const int depth = config.depth;
+    const int kernel_radius = config.kernel_radius;
+    const int num_iterations = config.num_iterations;
+    const int warmup_iterations = config.warmup_iterations;
+
+    const size_t vol_size = static_cast<size_t>(width) * height * depth;
     const size_t vol_bytes = vol_size * sizeof(float);
     
     const int kernel_size = 2 * kernel_radius + 1;
-    const size_t kernel_vol = (size_t)kernel_size * kernel_size * kernel_size;
+    const size_t kernel_vol = static_cast<size_t>(kernel_size) * kernel_size * kernel_size;
     const size_t kernel_bytes = kernel_vol * sizeof(float);
+
+    if (kernel_vol > static_cast<size_t>(MAX_KERNEL_CONSTANT_ELEMENTS)) {
+        std::cerr << "Kernel size " << kernel_size << " (" << kernel_vol
+                  << " elements) exceeds constant memory capacity ("
+                  << MAX_KERNEL_CONSTANT_ELEMENTS << " elements)." << std::endl;
+        return EXIT_FAILURE;
+    }
 
     // --- Host Data Allocation and Initialization ---
     std::vector<float> h_input(vol_size);
