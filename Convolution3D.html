@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Convolution Animation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Arial', sans-serif;
+        }
+        #container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        canvas {
+            display: block;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .diagram {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            border: 2px solid #e0e0e0;
+        }
+        .diagram h3 {
+            color: #333;
+            margin-top: 0;
+            text-align: center;
+            font-size: 18px;
+        }
+        .conv-example {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+        .matrix {
+            display: inline-block;
+            text-align: center;
+            position: relative;
+        }
+        .matrix-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #666;
+            margin-bottom: 12px;
+        }
+        .grid {
+            display: grid;
+            gap: 2px;
+            background: #ddd;
+            padding: 2px;
+            border-radius: 4px;
+        }
+        .grid-3x3 {
+            grid-template-columns: repeat(3, 40px);
+        }
+        .stacked-grids {
+            position: relative;
+            display: inline-block;
+        }
+        .grid-layer {
+            position: absolute;
+        }
+        .grid-layer:nth-child(1) {
+            transform: translate(0px, 0px);
+            z-index: 3;
+        }
+        .grid-layer:nth-child(2) {
+            transform: translate(8px, -8px);
+            z-index: 2;
+        }
+        .grid-layer:nth-child(3) {
+            transform: translate(16px, -16px);
+            z-index: 1;
+        }
+        .layer-label {
+            position: absolute;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 6px;
+            border-radius: 3px;
+            top: 2px;
+            left: 2px;
+        }
+        .cell {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #4dabf7;
+            color: white;
+            font-weight: bold;
+            font-size: 13px;
+            border-radius: 2px;
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+        }
+        .cell-layer2 {
+            background: #5c7cfa;
+        }
+        .cell-layer3 {
+            background: #748ffc;
+        }
+        .cell-kernel {
+            background: #9775fa;
+        }
+        .cell-kernel-layer2 {
+            background: #b197fc;
+        }
+        .cell-kernel-layer3 {
+            background: #c5b3fc;
+        }
+        .cell-result {
+            background: #51cf66;
+            width: 50px;
+            height: 50px;
+            font-size: 18px;
+        }
+        .operator {
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+        }
+        .computation {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #333;
+            text-align: left;
+            max-width: 700px;
+            line-height: 1.6;
+        }
+        .layer-comp {
+            margin: 8px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #4dabf7;
+        }
+        .layer-comp:nth-child(2) {
+            border-left-color: #5c7cfa;
+        }
+        .layer-comp:nth-child(3) {
+            border-left-color: #748ffc;
+        }
+        .controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        .info {
+            margin-top: 15px;
+            color: #333;
+            font-size: 14px;
+            text-align: center;
+        }
+        h2 {
+            color: #333;
+            text-align: center;
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h2>3D Convolution with Padding</h2>
+        <canvas id="canvas" width="800" height="550"></canvas>
+        <div class="controls">
+            <button onclick="toggleAnimation()">Pause/Resume</button>
+            <button onclick="resetAnimation()">Reset</button>
+            <button onclick="changeSpeed()">Speed: <span id="speedLabel">Normal</span></button>
+        </div>
+        <div class="info">
+            <p><strong>Input Volume:</strong> 5×5×5 | <strong>Padding:</strong> 1 | <strong>Kernel:</strong> 3×3×3 | <strong>Output:</strong> 5×5×5</p>
+            <p style="color: #e74c3c;">Red cubes = padding (zeros)</p>
+        </div>
+        
+        <div class="diagram">
+            <h3>3D Convolution: Element-wise Multiplication Across Depth</h3>
+            <div class="conv-example">
+                <div class="matrix">
+                    <div class="matrix-title">Input Window (3×3×3)</div>
+                    <div class="stacked-grids" style="width: 166px; height: 142px; margin-bottom: 20px;">
+                        <div class="grid grid-3x3 grid-layer">
+                            <span class="layer-label">D=1</span>
+                            <div class="cell">1</div>
+                            <div class="cell">2</div>
+                            <div class="cell">3</div>
+                            <div class="cell">4</div>
+                            <div class="cell">5</div>
+                            <div class="cell">6</div>
+                            <div class="cell">7</div>
+                            <div class="cell">8</div>
+                            <div class="cell">9</div>
+                        </div>
+                        <div class="grid grid-3x3 grid-layer">
+                            <span class="layer-label">D=2</span>
+                            <div class="cell cell-layer2">2</div>
+                            <div class="cell cell-layer2">3</div>
+                            <div class="cell cell-layer2">4</div>
+                            <div class="cell cell-layer2">5</div>
+                            <div class="cell cell-layer2">6</div>
+                            <div class="cell cell-layer2">7</div>
+                            <div class="cell cell-layer2">8</div>
+                            <div class="cell cell-layer2">9</div>
+                            <div class="cell cell-layer2">1</div>
+                        </div>
+                        <div class="grid grid-3x3 grid-layer">
+                            <span class="layer-label">D=3</span>
+                            <div class="cell cell-layer3">3</div>
+                            <div class="cell cell-layer3">4</div>
+                            <div class="cell cell-layer3">5</div>
+                            <div class="cell cell-layer3">6</div>
+                            <div class="cell cell-layer3">7</div>
+                            <div class="cell cell-layer3">8</div>
+                            <div class="cell cell-layer3">9</div>
+                            <div class="cell cell-layer3">1</div>
+                            <div class="cell cell-layer3">2</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="operator">⊗</div>
+                
+                <div class="matrix">
+                    <div class="matrix-title">Kernel (3×3×3)</div>
+                    <div class="stacked-grids" style="width: 166px; height: 142px; margin-bottom: 20px;">
+                        <div class="grid grid-3x3 grid-layer">
+                            <span class="layer-label">D=1</span>
+                            <div class="cell cell-kernel">1</div>
+                            <div class="cell cell-kernel">0</div>
+                            <div class="cell cell-kernel">1</div>
+                            <div class="cell cell-kernel">0</div>
+                            <div class="cell cell-kernel">1</div>
+                            <div class="cell cell-kernel">0</div>
+                            <div class="cell cell-kernel">1</div>
+                            <div class="cell cell-kernel">0</div>
+                            <div class="cell cell-kernel">1</div>
+                        </div>
+                        <div class="grid grid-3x3 grid-layer">
+                            <span class="layer-label">D=2</span>
+                            <div class="cell cell-kernel-layer2">0</div>
+                            <div class="cell cell-kernel-layer2">1</div>
+                            <div class="cell cell-kernel-layer2">0</div>
+                            <div class="cell cell-kernel-layer2">1</div>
+                            <div class="cell cell-kernel-layer2">0</div>
+                            <div class="cell cell-kernel-layer2">1</div>
+                            <div class="cell cell-kernel-layer2">0</div>
+                            <div class="cell cell-kernel-layer2">1</div>
+                            <div class="cell cell-kernel-layer2">0</div>
+                        </div>
+                        <div class="grid grid-3x3 grid-layer">
+                            <span class="layer-label">D=3</span>
+                            <div class="cell cell-kernel-layer3">1</div>
+                            <div class="cell cell-kernel-layer3">0</div>
+                            <div class="cell cell-kernel-layer3">1</div>
+                            <div class="cell cell-kernel-layer3">0</div>
+                            <div class="cell cell-kernel-layer3">1</div>
+                            <div class="cell cell-kernel-layer3">0</div>
+                            <div class="cell cell-kernel-layer3">1</div>
+                            <div class="cell cell-kernel-layer3">0</div>
+                            <div class="cell cell-kernel-layer3">1</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="operator">=</div>
+                
+                <div class="matrix">
+                    <div class="matrix-title">Output Value</div>
+                    <div class="grid">
+                        <div class="cell cell-result">80</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="computation">
+                <strong>3D Convolution Computation (across all 3 depth layers):</strong>
+                
+                <div class="layer-comp">
+                    <strong>Depth 1:</strong> (1×1) + (2×0) + (3×1) + (4×0) + (5×1) + (6×0) + (7×1) + (8×0) + (9×1) = <strong>30</strong>
+                </div>
+                
+                <div class="layer-comp">
+                    <strong>Depth 2:</strong> (2×0) + (3×1) + (4×0) + (5×1) + (6×0) + (7×1) + (8×0) + (9×1) + (1×0) = <strong>24</strong>
+                </div>
+                
+                <div class="layer-comp">
+                    <strong>Depth 3:</strong> (3×1) + (4×0) + (5×1) + (6×0) + (7×1) + (8×0) + (9×1) + (1×0) + (2×1) = <strong>26</strong>
+                </div>
+                
+                <strong>Final Sum:</strong> 30 + 24 + 26 = <strong>80</strong> (single output value)
+                
+                <p style="margin-top: 12px; margin-bottom: 0;"><em>The kernel slides through all positions in the 3D volume, computing one output value at each position.</em></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let animating = true;
+        let frame = 0;
+        let speed = 1;
+        const speeds = [0.5, 1, 2];
+        let speedIndex = 1;
+        
+        const inputSize = 5;
+        const padding = 1;
+        const paddedSize = inputSize + 2 * padding;
+        const kernelSize = 3;
+        const outputSize = inputSize; // With padding=1, output = input size
+        const cubeSize = 22;
+        const spacing = 10;
+        
+        let kernelX = 0, kernelY = 0, kernelZ = 0;
+        let currentOutput = 0;
+        
+        function drawCube(x, y, size, color, alpha = 1) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            
+            // Front face
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, size, size);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, y, size, size);
+            
+            // Top face
+            ctx.fillStyle = lightenColor(color, 20);
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + size * 0.3, y - size * 0.3);
+            ctx.lineTo(x + size + size * 0.3, y - size * 0.3);
+            ctx.lineTo(x + size, y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            
+            // Right face
+            ctx.fillStyle = darkenColor(color, 20);
+            ctx.beginPath();
+            ctx.moveTo(x + size, y);
+            ctx.lineTo(x + size + size * 0.3, y - size * 0.3);
+            ctx.lineTo(x + size + size * 0.3, y + size - size * 0.3);
+            ctx.lineTo(x + size, y + size);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        function lightenColor(color, percent) {
+            const num = parseInt(color.replace('#', ''), 16);
+            const amt = Math.round(2.55 * percent);
+            const R = Math.min(255, (num >> 16) + amt);
+            const G = Math.min(255, (num >> 8 & 0x00FF) + amt);
+            const B = Math.min(255, (num & 0x0000FF) + amt);
+            return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
+        }
+        
+        function darkenColor(color, percent) {
+            return lightenColor(color, -percent);
+        }
+        
+        function isPadding(x, y, z) {
+            return x < padding || x >= paddedSize - padding ||
+                   y < padding || y >= paddedSize - padding ||
+                   z < padding || z >= paddedSize - padding;
+        }
+        
+        function draw3DVolume(startX, startY, width, height, depth, baseColor, paddingColor, highlight = null) {
+            for (let z = depth - 1; z >= 0; z--) {
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const posX = startX + x * (cubeSize + 2) + z * (cubeSize * 0.3);
+                        const posY = startY + y * (cubeSize + 2) - z * (cubeSize * 0.3);
+                        
+                        let color = baseColor;
+                        let alpha = 0.6 - z * 0.08;
+                        
+                        // Check if this is a padding voxel
+                        if (paddingColor && isPadding(x, y, z)) {
+                            color = paddingColor;
+                            alpha = 0.15;
+                        }
+                        
+                        // Check if this is highlighted by the kernel
+                        if (highlight && x >= highlight.x && x < highlight.x + highlight.w &&
+                            y >= highlight.y && y < highlight.y + highlight.h &&
+                            z >= highlight.z && z < highlight.z + highlight.d) {
+                            color = '#ffd43b';
+                            alpha = 0.95;
+                        }
+                        
+                        drawCube(posX, posY, cubeSize, color, alpha);
+                    }
+                }
+            }
+        }
+        
+        function drawOutputVolume(startX, startY, width, height, depth, baseColor, highlight = null) {
+            for (let z = depth - 1; z >= 0; z--) {
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const posX = startX + x * (cubeSize + 2) + z * (cubeSize * 0.3);
+                        const posY = startY + y * (cubeSize + 2) - z * (cubeSize * 0.3);
+                        
+                        let color = baseColor;
+                        let alpha = 0.6 - z * 0.08;
+                        
+                        if (highlight && x === highlight.x && y === highlight.y && z === highlight.z) {
+                            color = '#51cf66';
+                            alpha = 0.95;
+                        }
+                        
+                        drawCube(posX, posY, cubeSize, color, alpha);
+                    }
+                }
+            }
+        }
+        
+        function drawArrow(x1, y1, x2, y2) {
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+            
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            ctx.beginPath();
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - 10 * Math.cos(angle - Math.PI / 6), y2 - 10 * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(x2 - 10 * Math.cos(angle + Math.PI / 6), y2 - 10 * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fillStyle = '#333';
+            ctx.fill();
+        }
+        
+        function drawText(text, x, y, size = 14) {
+            ctx.fillStyle = '#333';
+            ctx.font = `bold ${size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.fillText(text, x, y);
+        }
+        
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw padded input volume
+            drawText('Padded Input (7×7×7)', 140, 30);
+            draw3DVolume(40, 60, paddedSize, paddedSize, paddedSize, '#4dabf7', '#e74c3c', {
+                x: kernelX, y: kernelY, z: kernelZ,
+                w: kernelSize, h: kernelSize, d: kernelSize
+            });
+            
+            // Draw kernel
+            drawText('Kernel (3×3×3)', 400, 30);
+            const kernelStartX = 350;
+            const kernelStartY = 100;
+            for (let z = kernelSize - 1; z >= 0; z--) {
+                for (let y = 0; y < kernelSize; y++) {
+                    for (let x = 0; x < kernelSize; x++) {
+                        const posX = kernelStartX + x * (cubeSize + 2) + z * (cubeSize * 0.3);
+                        const posY = kernelStartY + y * (cubeSize + 2) - z * (cubeSize * 0.3);
+                        drawCube(posX, posY, cubeSize, '#9775fa', 0.7 - z * 0.1);
+                    }
+                }
+            }
+            
+            // Draw arrow
+            drawArrow(300, 200, 330, 200);
+            drawText('Convolve', 315, 190, 12);
+            
+            // Draw output volume
+            drawText('Output (5×5×5)', 600, 30);
+            const outZ = Math.floor(currentOutput / (outputSize * outputSize));
+            const outY = Math.floor((currentOutput % (outputSize * outputSize)) / outputSize);
+            const outX = currentOutput % outputSize;
+            
+            drawOutputVolume(550, 60, outputSize, outputSize, outputSize, '#a78bfa', {
+                x: outX, y: outY, z: outZ
+            });
+            
+            // Draw operation text
+            const actualX = kernelX - padding;
+            const actualY = kernelY - padding;
+            const actualZ = kernelZ - padding;
+            drawText(`Position: [${actualX},${actualY},${actualZ}] → [${outX},${outY},${outZ}]`, 400, 430, 15);
+            
+            // Draw progress
+            const progress = Math.floor((currentOutput / (outputSize * outputSize * outputSize)) * 100);
+            drawText(`Progress: ${progress}%`, 400, 480, 14);
+            
+            // Additional info
+            drawText('Yellow = Current kernel position', 400, 510, 12);
+            
+            if (animating) {
+                frame += speed;
+                if (frame >= 20) {
+                    frame = 0;
+                    kernelX++;
+                    if (kernelX >= outputSize) {
+                        kernelX = 0;
+                        kernelY++;
+                        if (kernelY >= outputSize) {
+                            kernelY = 0;
+                            kernelZ++;
+                            if (kernelZ >= outputSize) {
+                                kernelZ = 0;
+                                currentOutput = 0;
+                            } else {
+                                currentOutput++;
+                            }
+                        } else {
+                            currentOutput++;
+                        }
+                    } else {
+                        currentOutput++;
+                    }
+                }
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        function toggleAnimation() {
+            animating = !animating;
+        }
+        
+        function resetAnimation() {
+            kernelX = 0;
+            kernelY = 0;
+            kernelZ = 0;
+            currentOutput = 0;
+            frame = 0;
+        }
+        
+        function changeSpeed() {
+            speedIndex = (speedIndex + 1) % speeds.length;
+            speed = speeds[speedIndex];
+            const labels = ['Slow', 'Normal', 'Fast'];
+            document.getElementById('speedLabel').textContent = labels[speedIndex];
+        }
+        
+        animate();
+    </script>
+</body>
+</html>
