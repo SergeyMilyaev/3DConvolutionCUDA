@@ -28,6 +28,9 @@ struct BenchmarkConfig {
     int kernel_radius = 7;
     int num_iterations = 20;
     int warmup_iterations = 5;
+    int block_dim_x = 8;
+    int block_dim_y = 8;
+    int block_dim_z = 8;
 };
 
 enum class ArgParseStatus {
@@ -45,6 +48,9 @@ void print_usage(const char* program_name) {
               << "  --kernel-radius <int>     Kernel radius (default: 7)\n"
               << "  --iterations <int>        Benchmark iterations (default: 20)\n"
               << "  --warmup-iterations <int> Warmup iterations (default: 5)\n"
+              << "  --block-dim-x <int>       CUDA block dimension X (default: 8)\n"
+              << "  --block-dim-y <int>       CUDA block dimension Y (default: 8)\n"
+              << "  --block-dim-z <int>       CUDA block dimension Z (default: 8)\n"
               << "  -h, --help                Show this help message\n";
 }
 
@@ -117,6 +123,24 @@ ArgParseStatus parse_arguments(int argc, char** argv, BenchmarkConfig& config) {
             if (!assign_positive_int(value, arg, 0, config, &BenchmarkConfig::warmup_iterations)) {
                 return ArgParseStatus::Error;
             }
+        } else if (arg == "--block-dim-x") {
+            std::string value;
+            if (!require_value(arg, value)) return ArgParseStatus::Error;
+            if (!assign_positive_int(value, arg, 1, config, &BenchmarkConfig::block_dim_x)) {
+                return ArgParseStatus::Error;
+            }
+        } else if (arg == "--block-dim-y") {
+            std::string value;
+            if (!require_value(arg, value)) return ArgParseStatus::Error;
+            if (!assign_positive_int(value, arg, 1, config, &BenchmarkConfig::block_dim_y)) {
+                return ArgParseStatus::Error;
+            }
+        } else if (arg == "--block-dim-z") {
+            std::string value;
+            if (!require_value(arg, value)) return ArgParseStatus::Error;
+            if (!assign_positive_int(value, arg, 1, config, &BenchmarkConfig::block_dim_z)) {
+                return ArgParseStatus::Error;
+            }
         } else if (arg == "--help" || arg == "-h") {
             print_usage(argv[0]);
             return ArgParseStatus::ShowHelp;
@@ -170,6 +194,9 @@ int main(int argc, char** argv) {
     const int kernel_radius = config.kernel_radius;
     const int num_iterations = config.num_iterations;
     const int warmup_iterations = config.warmup_iterations;
+    const int block_dim_x = config.block_dim_x;
+    const int block_dim_y = config.block_dim_y;
+    const int block_dim_z = config.block_dim_z;
 
     const size_t vol_size = static_cast<size_t>(width) * height * depth;
     const size_t vol_bytes = vol_size * sizeof(float);
@@ -182,6 +209,19 @@ int main(int argc, char** argv) {
         std::cerr << "Kernel size " << kernel_size << " (" << kernel_vol
                   << " elements) exceeds constant memory capacity ("
                   << MAX_KERNEL_CONSTANT_ELEMENTS << " elements)." << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    if (static_cast<long long>(block_dim_x) * block_dim_y * block_dim_z > 1024LL) {
+        std::cerr << "Block dimensions produce "
+                  << static_cast<long long>(block_dim_x) * block_dim_y * block_dim_z
+                  << " threads per block, exceeding the CUDA limit of 1024." << std::endl;
+        return EXIT_FAILURE;
+    }
+    if (block_dim_x > 1024 || block_dim_y > 1024 || block_dim_z > 64) {
+        std::cerr << "Block dimensions ("
+                  << block_dim_x << ", " << block_dim_y << ", " << block_dim_z
+                  << ") exceed typical CUDA per-dimension limits (1024, 1024, 64)." << std::endl;
         return EXIT_FAILURE;
     }
 
@@ -266,7 +306,7 @@ int main(int argc, char** argv) {
     CUDA_CHECK(uploadConvolutionKernelToConstantMemory(
         h_kernel.data(), kernel_radius, kernel_radius, kernel_radius));
 
-    const dim3 block_dim(8, 8, 8);
+    const dim3 block_dim(block_dim_x, block_dim_y, block_dim_z);
     const dim3 grid_dim((width + block_dim.x - 1) / block_dim.x,
                         (height + block_dim.y - 1) / block_dim.y,
                         (depth + block_dim.z - 1) / block_dim.z);

@@ -59,24 +59,28 @@ Command-line options let you tailor the benchmark to your dataset or GPU. Run `-
 | `--kernel-radius <int>` | Convolution kernel radius (kernel size = `2 * radius + 1`) | 7 |
 | `--iterations <int>` | Number of timed iterations | 20 |
 | `--warmup-iterations <int>` | Number of warm-up iterations executed before timing | 5 |
+| `--block-dim-x <int>` | CUDA block dimension in X | 8 |
+| `--block-dim-y <int>` | CUDA block dimension in Y | 8 |
+| `--block-dim-z <int>` | CUDA block dimension in Z | 8 |
 | `-h, --help` | Show usage information | — |
 
-Example: benchmark a 256×256×32 volume with a radius-5 kernel, measuring 50 iterations after 10 warm-up runs:
+Example: benchmark a 256×256×32 volume with a radius-5 kernel, measuring 50 iterations after 10 warm-up runs and using a `16×8×4` CUDA block:
 
 ```bash
 ./bin/convolution3D --width 256 --height 256 --depth 32 \
-  --kernel-radius 5 --iterations 50 --warmup-iterations 10
+    --kernel-radius 5 --iterations 50 --warmup-iterations 10 \
+    --block-dim-x 16 --block-dim-y 8 --block-dim-z 4
 ```
 
-> **Note:** The kernel must fit in CUDA constant memory. Extremely large radii will be rejected with a descriptive error.
+> **Notes:**
+> * The kernel must fit in CUDA constant memory. Extremely large radii will be rejected with a descriptive error.
+> * The CUDA block dimensions must satisfy hardware limits (≤1024 threads per block and Z ≤ 64).
 
+To remove build artifacts:
 
 ```bash
-- Copy code
 make clean
 ```
-
-This will remove all files in the bin/ directory.
 
 
 ## Tests
@@ -84,7 +88,6 @@ This will remove all files in the bin/ directory.
 Unit tests for the CPU and CUDA kernels live under `tests/` and require GoogleTest. Build and run them with:
 
 ```bash
-- Copy code
 make test
 ```
 
