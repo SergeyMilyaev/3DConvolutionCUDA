@@ -163,7 +163,7 @@ For filters that are "separable," a 3D convolution can be decomposed into three 
 
 ### Final Performance Analysis
 
-The performance tests were conducted in Windows Subsystem for Linux with  Intel Core Ultra 7 155H CPU and NVIDIA RTX 500 Ada GPU. A single random input with the size 128x128x8 was convolved with 7x7x7 random kernel and median execution times of 20 test runs after 5 warmup runs for each implementation are reported below.
+The performance tests were conducted in Windows Subsystem for Linux with  Intel Core Ultra 7 155H CPU and NVIDIA RTX 500 Ada GPU. A single random input with the size 128x128x8 was convolved with 7x7x7 random kernel using 8x8x8 CUDA tread blocks and median execution times of 20 test runs after 5 warmup runs for each implementation are reported below.
 
 | Implementation | Key Feature | Median time (ms) | Primary Limiter |
 |---|---|---|---|
