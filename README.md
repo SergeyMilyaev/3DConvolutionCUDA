@@ -78,12 +78,6 @@ Example: benchmark a 256×256×32 volume with radii of 5×3×7 along X, Y, and Z
 > * The kernel must fit in CUDA constant memory. Extremely large kernels will be rejected with a descriptive error.
 > * The CUDA block dimensions must satisfy hardware limits (≤1024 threads per block and Z ≤ 64).
 
-To remove build artifacts:
-
-```bash
-make clean
-```
-
 
 ## Tests
 
@@ -91,6 +85,12 @@ Unit tests for the CPU and CUDA kernels live under `tests/` and require GoogleTe
 
 ```bash
 make test
+```
+
+The tests can be run with the following command:
+
+```bash
+./bin/test_convolution3D
 ```
 
 GoogleTest can be build with CMake using following commands:
