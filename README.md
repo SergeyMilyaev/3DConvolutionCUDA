@@ -12,6 +12,10 @@ This project compares several 3D convolution implementations:
 Benchmark statistics (average, median, minimum) in convolution3D are reported after multiple warm-up and measured iterations.
 
 
+## Dependencies
+- CUDA Toolkit (nvcc, runtime). Tested with CUDA toolkit 12.8.
+
+
 ## Building
 
 The project uses a standard CUDA-enabled makefile.
