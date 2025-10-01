@@ -55,7 +55,6 @@ Command-line options let you tailor the benchmark to your dataset or GPU. Run `-
 | `--width <int>` | Volume width | 128 |
 | `--height <int>` | Volume height | 128 |
 | `--depth <int>` | Volume depth | 8 |
-| `--kernel-radius <int>` | Convolution kernel radius applied to all axes (kernel size = `2 * radius + 1`) | 7 |
 | `--kernel-radius-x <int>` | Kernel radius along X (kernel width = `2 * radius + 1`) | 7 |
 | `--kernel-radius-y <int>` | Kernel radius along Y (kernel height = `2 * radius + 1`) | 7 |
 | `--kernel-radius-z <int>` | Kernel radius along Z (kernel depth = `2 * radius + 1`) | 7 |

@@ -109,18 +109,7 @@ ArgParseStatus parse_arguments(int argc, char** argv, BenchmarkConfig& config) {
             if (!require_value(arg, value)) return ArgParseStatus::Error;
             if (!assign_positive_int(value, arg, 1, config, &BenchmarkConfig::depth)) {
                 return ArgParseStatus::Error;
-            }
-        } else if (arg == "--kernel-radius") {
-            std::string value;
-            if (!require_value(arg, value)) return ArgParseStatus::Error;
-            int parsed_radius = config.kernel_radius_x;
-            if (!assign_positive_int(value, arg, 0, config, &BenchmarkConfig::kernel_radius_x)) {
-                return ArgParseStatus::Error;
-            }
-            // assign_positive_int already updated kernel_radius_x; retrieve parsed value and copy to other axes
-            parsed_radius = config.kernel_radius_x;
-            config.kernel_radius_y = parsed_radius;
-            config.kernel_radius_z = parsed_radius;
+            }        
         } else if (arg == "--kernel-radius-x") {
             std::string value;
             if (!require_value(arg, value)) return ArgParseStatus::Error;
