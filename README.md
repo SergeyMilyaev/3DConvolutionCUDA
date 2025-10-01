@@ -121,10 +121,10 @@ A 3D convolution applies a 3D filter, or kernel, across a 3D input volume to pro
 The most straightforward implementation maps one thread to each output voxel. The kernel reads all required input points and filter weights directly from global memory, performs the computation, and writes the single result back to global memory. The input and kernel sized are only bounded by the the amount of the DRAM on the GPU.
 
 *   **Kernel Logic:** Each thread calculates its global `(x,y,z)` index. It then enters a series of nested loops to iterate through the 3D filter dimensions, calculating the corresponding input data coordinates, reading the input voxel and filter weight from global memory, multiplying them, and accumulating the result.
-*   **Initial Parameters:** Following the heuristics from Section VI, a 3D block shape is chosen to map threads to the output volume, ensuring coalescing along the `x`-axis. A block size of 256 is selected.
+*   **Initial Parameters:** A 3D block shape is chosen to map threads to the output volume, ensuring coalescing along the `x`-axis. A block size of 256 is selected.
     *   `blockDim = dim3(8, 8, 4)`
     *   `gridDim` is calculated to cover the entire `(Nx, Ny, Nz)` output volume.
-*   **Performance Analysis (via Nsight Compute):**
+*   **Performance Analysis:**
     *   **Bottleneck:** The kernel heavily memory-bound.
     *   **Memory Throughput:** The effective memory bandwidth is extremely low.
     *   **Root Cause:** The kernel exhibits abysmal data reuse. For every output point, all input voxels in the corresponding sub-volume are read from slow global DRAM. Neighboring threads read overlapping sets of data, but since each read is independent, the same data is fetched from DRAM over and over again. This results in massive, redundant global memory traffic.
