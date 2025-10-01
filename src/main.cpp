@@ -408,18 +408,18 @@ int main(int argc, char** argv) {
                                           block_dim));
     };
 
-    std::vector<float> timings_naive;
-    benchmark_cuda_kernel("CUDA convolution3DOptimized",
-                          launch_naive,
-                          timings_naive,
-                          host_output_naive);
-
     std::vector<float> timings_naive_global;
     benchmark_cuda_kernel("CUDA convolution3DBaseline",
                           launch_naive_global,
                           timings_naive_global,
                           host_output_naive_global);
 
+    std::vector<float> timings_naive;
+    benchmark_cuda_kernel("CUDA convolution3DOptimized",
+                          launch_naive,
+                          timings_naive,
+                          host_output_naive);
+    
     std::vector<float> timings_separable;
     benchmark_cuda_kernel("CUDA convolution3DSeparable",
                           launch_separable,
