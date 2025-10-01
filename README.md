@@ -55,7 +55,10 @@ Command-line options let you tailor the benchmark to your dataset or GPU. Run `-
 | `--width <int>` | Volume width | 128 |
 | `--height <int>` | Volume height | 128 |
 | `--depth <int>` | Volume depth | 8 |
-| `--kernel-radius <int>` | Convolution kernel radius (kernel size = `2 * radius + 1`) | 7 |
+| `--kernel-radius <int>` | Convolution kernel radius applied to all axes (kernel size = `2 * radius + 1`) | 7 |
+| `--kernel-radius-x <int>` | Kernel radius along X (kernel width = `2 * radius + 1`) | 7 |
+| `--kernel-radius-y <int>` | Kernel radius along Y (kernel height = `2 * radius + 1`) | 7 |
+| `--kernel-radius-z <int>` | Kernel radius along Z (kernel depth = `2 * radius + 1`) | 7 |
 | `--iterations <int>` | Number of timed iterations | 20 |
 | `--warmup-iterations <int>` | Number of warm-up iterations executed before timing | 5 |
 | `--block-dim-x <int>` | CUDA block dimension in X | 8 |
@@ -63,11 +66,12 @@ Command-line options let you tailor the benchmark to your dataset or GPU. Run `-
 | `--block-dim-z <int>` | CUDA block dimension in Z | 8 |
 | `-h, --help` | Show usage information | — |
 
-Example: benchmark a 256×256×32 volume with a radius-5 kernel, measuring 50 iterations after 10 warm-up runs and using a `16×8×4` CUDA block:
+Example: benchmark a 256×256×32 volume with radii of 5×3×7 along X, Y, and Z, measuring 50 iterations after 10 warm-up runs and using a `16×8×4` CUDA block:
 
 ```bash
 ./bin/convolution3D --width 256 --height 256 --depth 32 \
-    --kernel-radius 5 --iterations 50 --warmup-iterations 10 \
+    --kernel-radius-x 5 --kernel-radius-y 3 --kernel-radius-z 7 \
+    --iterations 50 --warmup-iterations 10 \
     --block-dim-x 16 --block-dim-y 8 --block-dim-z 4
 ```
 

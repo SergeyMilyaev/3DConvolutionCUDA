@@ -25,7 +25,9 @@ struct BenchmarkConfig {
     int width = 128;
     int height = 128;
     int depth = 8;
-    int kernel_radius = 7;
+    int kernel_radius_x = 7;
+    int kernel_radius_y = 7;
+    int kernel_radius_z = 7;
     int num_iterations = 20;
     int warmup_iterations = 5;
     int block_dim_x = 8;
@@ -45,7 +47,10 @@ void print_usage(const char* program_name) {
               << "  --width <int>             Volume width (default: 128)\n"
               << "  --height <int>            Volume height (default: 128)\n"
               << "  --depth <int>             Volume depth (default: 8)\n"
-              << "  --kernel-radius <int>     Kernel radius (default: 7)\n"
+              << "  --kernel-radius <int>     Kernel radius for all axes (default: 7)\n"
+              << "  --kernel-radius-x <int>   Kernel radius along X axis (default: 7)\n"
+              << "  --kernel-radius-y <int>   Kernel radius along Y axis (default: 7)\n"
+              << "  --kernel-radius-z <int>   Kernel radius along Z axis (default: 7)\n"
               << "  --iterations <int>        Benchmark iterations (default: 20)\n"
               << "  --warmup-iterations <int> Warmup iterations (default: 5)\n"
               << "  --block-dim-x <int>       CUDA block dimension X (default: 8)\n"
@@ -108,7 +113,30 @@ ArgParseStatus parse_arguments(int argc, char** argv, BenchmarkConfig& config) {
         } else if (arg == "--kernel-radius") {
             std::string value;
             if (!require_value(arg, value)) return ArgParseStatus::Error;
-            if (!assign_positive_int(value, arg, 0, config, &BenchmarkConfig::kernel_radius)) {
+            int parsed_radius = config.kernel_radius_x;
+            if (!assign_positive_int(value, arg, 0, config, &BenchmarkConfig::kernel_radius_x)) {
+                return ArgParseStatus::Error;
+            }
+            // assign_positive_int already updated kernel_radius_x; retrieve parsed value and copy to other axes
+            parsed_radius = config.kernel_radius_x;
+            config.kernel_radius_y = parsed_radius;
+            config.kernel_radius_z = parsed_radius;
+        } else if (arg == "--kernel-radius-x") {
+            std::string value;
+            if (!require_value(arg, value)) return ArgParseStatus::Error;
+            if (!assign_positive_int(value, arg, 0, config, &BenchmarkConfig::kernel_radius_x)) {
+                return ArgParseStatus::Error;
+            }
+        } else if (arg == "--kernel-radius-y") {
+            std::string value;
+            if (!require_value(arg, value)) return ArgParseStatus::Error;
+            if (!assign_positive_int(value, arg, 0, config, &BenchmarkConfig::kernel_radius_y)) {
+                return ArgParseStatus::Error;
+            }
+        } else if (arg == "--kernel-radius-z") {
+            std::string value;
+            if (!require_value(arg, value)) return ArgParseStatus::Error;
+            if (!assign_positive_int(value, arg, 0, config, &BenchmarkConfig::kernel_radius_z)) {
                 return ArgParseStatus::Error;
             }
         } else if (arg == "--iterations") {
@@ -191,7 +219,9 @@ int main(int argc, char** argv) {
     const int width = config.width;
     const int height = config.height;
     const int depth = config.depth;
-    const int kernel_radius = config.kernel_radius;
+    const int kernel_radius_x = config.kernel_radius_x;
+    const int kernel_radius_y = config.kernel_radius_y;
+    const int kernel_radius_z = config.kernel_radius_z;
     const int num_iterations = config.num_iterations;
     const int warmup_iterations = config.warmup_iterations;
     const int block_dim_x = config.block_dim_x;
@@ -200,13 +230,17 @@ int main(int argc, char** argv) {
 
     const size_t vol_size = static_cast<size_t>(width) * height * depth;
     const size_t vol_bytes = vol_size * sizeof(float);
-    
-    const int kernel_size = 2 * kernel_radius + 1;
-    const size_t kernel_vol = static_cast<size_t>(kernel_size) * kernel_size * kernel_size;
-    const size_t kernel_bytes = kernel_vol * sizeof(float);
 
-    if (kernel_vol > static_cast<size_t>(MAX_KERNEL_CONSTANT_ELEMENTS)) {
-        std::cerr << "Kernel size " << kernel_size << " (" << kernel_vol
+    const int kernel_dim_x = 2 * kernel_radius_x + 1;
+    const int kernel_dim_y = 2 * kernel_radius_y + 1;
+    const int kernel_dim_z = 2 * kernel_radius_z + 1;
+    const size_t kernel_volume = static_cast<size_t>(kernel_dim_x) * kernel_dim_y * kernel_dim_z;
+    const size_t kernel_bytes = kernel_volume * sizeof(float);
+
+    if (kernel_volume > static_cast<size_t>(MAX_KERNEL_CONSTANT_ELEMENTS)) {
+        std::cerr << "Kernel size "
+                  << kernel_dim_x << "x" << kernel_dim_y << "x" << kernel_dim_z
+                  << " (" << kernel_volume
                   << " elements) exceeds constant memory capacity ("
                   << MAX_KERNEL_CONSTANT_ELEMENTS << " elements)." << std::endl;
         return EXIT_FAILURE;
@@ -227,10 +261,10 @@ int main(int argc, char** argv) {
 
     // --- Host Data Allocation and Initialization ---
     std::vector<float> host_input(vol_size);
-    std::vector<float> host_kernel(kernel_vol);
-    std::vector<float> host_kernel_x(kernel_size);
-    std::vector<float> host_kernel_y(kernel_size);
-    std::vector<float> host_kernel_z(kernel_size);
+    std::vector<float> host_kernel(kernel_volume);
+    std::vector<float> host_kernel_x(kernel_dim_x);
+    std::vector<float> host_kernel_y(kernel_dim_y);
+    std::vector<float> host_kernel_z(kernel_dim_z);
     std::vector<float> host_output_cpu(vol_size);
     std::vector<float> host_output_naive(vol_size);
     std::vector<float> host_output_naive_global(vol_size);
@@ -239,16 +273,20 @@ int main(int argc, char** argv) {
     for(size_t i = 0; i < vol_size; ++i) 
         host_input[i] = (float)rand() / RAND_MAX;
 
-    for (int i = 0; i < kernel_size; ++i) {
+    for (int i = 0; i < kernel_dim_x; ++i) {
         host_kernel_x[i] = static_cast<float>(rand()) / RAND_MAX;
+    }
+    for (int i = 0; i < kernel_dim_y; ++i) {
         host_kernel_y[i] = static_cast<float>(rand()) / RAND_MAX;
+    }
+    for (int i = 0; i < kernel_dim_z; ++i) {
         host_kernel_z[i] = static_cast<float>(rand()) / RAND_MAX;
     }
 
-    for (int kz = 0; kz < kernel_size; ++kz) {
-        for (int ky = 0; ky < kernel_size; ++ky) {
-            for (int kx = 0; kx < kernel_size; ++kx) {
-                const int idx = kz * kernel_size * kernel_size + ky * kernel_size + kx;
+    for (int kz = 0; kz < kernel_dim_z; ++kz) {
+        for (int ky = 0; ky < kernel_dim_y; ++ky) {
+            for (int kx = 0; kx < kernel_dim_x; ++kx) {
+                const int idx = kz * kernel_dim_x * kernel_dim_y + ky * kernel_dim_x + kx;
                 host_kernel[idx] = host_kernel_x[kx] * host_kernel_y[ky] * host_kernel_z[kz];
             }
         }
@@ -258,7 +296,7 @@ int main(int argc, char** argv) {
         const auto start = std::chrono::steady_clock::now();
         convolution3DGold(host_output_cpu.data(), host_input.data(), host_kernel.data(),
                            width, height, depth,
-                           kernel_radius, kernel_radius, kernel_radius,
+                           kernel_radius_x, kernel_radius_y, kernel_radius_z,
                            false);
         const auto end = std::chrono::steady_clock::now();
         const std::chrono::duration<float, std::milli> elapsed = end - start;
@@ -304,14 +342,14 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMemcpy(device_input, host_input.data(), vol_bytes, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_kernel, host_kernel.data(), kernel_bytes, cudaMemcpyHostToDevice));
     CUDA_CHECK(uploadConvolutionKernelToConstantMemory(
-        host_kernel.data(), kernel_radius, kernel_radius, kernel_radius));
+        host_kernel.data(), kernel_radius_x, kernel_radius_y, kernel_radius_z));
 
     const dim3 block_dim(block_dim_x, block_dim_y, block_dim_z);
     const dim3 grid_dim((width + block_dim.x - 1) / block_dim.x,
                         (height + block_dim.y - 1) / block_dim.y,
                         (depth + block_dim.z - 1) / block_dim.z);
     const size_t shared_size = convolution3DSharedTileSizeBytes(
-        block_dim, kernel_radius, kernel_radius, kernel_radius);
+        block_dim, kernel_radius_x, kernel_radius_y, kernel_radius_z);
 
     cudaEvent_t gpu_start, gpu_stop;
     CUDA_CHECK(cudaEventCreate(&gpu_start));
@@ -359,7 +397,7 @@ int main(int argc, char** argv) {
         launchConvolution3DOptimized(grid_dim, block_dim, shared_size,
                                    d_output, device_input,
                                    width, height, depth,
-                                   kernel_radius, kernel_radius, kernel_radius,
+                                   kernel_radius_x, kernel_radius_y, kernel_radius_z,
                                    false);
     };
 
@@ -367,7 +405,7 @@ int main(int argc, char** argv) {
         launchConvolution3DBaseline(grid_dim, block_dim,
                                           d_output, device_input, d_kernel,
                                           width, height, depth,
-                                          kernel_radius, kernel_radius, kernel_radius,
+                                          kernel_radius_x, kernel_radius_y, kernel_radius_z,
                                           false);
     };
 
@@ -375,7 +413,7 @@ int main(int argc, char** argv) {
         CUDA_CHECK(convolution3DSeparable(d_output, device_input,
                                           host_kernel_x.data(), host_kernel_y.data(), host_kernel_z.data(),
                                           width, height, depth,
-                                          kernel_radius, kernel_radius, kernel_radius,
+                                          kernel_radius_x, kernel_radius_y, kernel_radius_z,
                                           false,
                                           nullptr,
                                           block_dim));
