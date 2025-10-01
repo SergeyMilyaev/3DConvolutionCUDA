@@ -18,6 +18,8 @@ Benchmark statistics (average, median, minimum) in convolution3D are reported af
 
 ## Building
 
+### Linux
+
 The project uses a standard CUDA-enabled makefile.
 
 ```bash
