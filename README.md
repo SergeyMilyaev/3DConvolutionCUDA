@@ -6,7 +6,7 @@ This project compares several 3D convolution implementations:
 
 * A CPU reference implementation (`convolution3DGold`)
 * A naive CUDA kernel that reads the kernel and the input data from global memory
-* A naive CUDA kernel that caches the convolution kernel in constant memory and uses tiles in shared memory 
+* A CUDA kernel that caches the convolution kernel in constant memory and uses tiles in shared memory 
 * A CUDA implementation with separable 1D filtering
 
 Benchmark statistics (average, median, minimum) in convolution3D are reported after multiple warm-up and measured iterations.
